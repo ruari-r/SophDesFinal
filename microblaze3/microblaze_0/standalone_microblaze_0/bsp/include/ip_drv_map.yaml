@@ -1,0 +1,39 @@
+axi_gpio_BUTTONS:
+- axi_gpio
+- gpio
+axi_gpio_JA:
+- axi_gpio
+- gpio
+axi_gpio_JB:
+- axi_gpio
+- gpio
+axi_gpio_JC:
+- axi_gpio
+- gpio
+axi_gpio_JXADC:
+- axi_gpio
+- gpio
+axi_gpio_LEDS:
+- axi_gpio
+- gpio
+axi_gpio_SEVEN_SEG:
+- axi_gpio
+- gpio
+axi_gpio_SWITCHES:
+- axi_gpio
+- gpio
+axi_timer_0:
+- axi_timer
+- tmrctr
+axi_timer_1:
+- axi_timer
+- tmrctr
+axi_timer_2:
+- axi_timer
+- tmrctr
+axi_timer_3:
+- axi_timer
+- tmrctr
+axi_uartlite_0:
+- axi_uartlite
+- uartlite
