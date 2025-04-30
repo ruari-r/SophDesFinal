@@ -74,14 +74,7 @@ typedef enum motion_type{
 } motion_type;
 
 typedef enum state_type {
-  wait_for_coords,
-  delay_5,
-  check_y_turn,
-  turn_180,
-  drive_to_y,
-  x_turn,
-  drive_to_x,
-  hold_position
+  wait_to_start
 } state_type;
 
 // Seven Segment Display LUT
@@ -124,8 +117,6 @@ void set_motion_type(motion_type mode);
 void PID_Controller(uint32_t L1, uint32_t R1);
 void drive_straight(uint32_t inches, uint16_t coords);
 void turn(uint32_t degrees, uint16_t coords);
-uint16_t get_coords();
-uint16_t disp_coords(uint16_t coords);
 void celebration();
 
 // Global Variables for Duty Cycles
@@ -144,11 +135,7 @@ int main() {
   JC_DDR = 0x00;
 
   ANODES = 0x00;
-
-  state_type state = wait_for_coords;
-  state_type next_state = wait_for_coords;
   
-
   while (1) {  
     
   }
@@ -451,7 +438,6 @@ void drive_straight(uint32_t inches, uint16_t coords) {
     if (++pwmCnt == PWM_TOP) pwmCnt = 0;
 
     PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
-    disp_coords(coords);
     LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
   } 
 }
@@ -481,54 +467,8 @@ void turn(uint32_t degrees, uint16_t coords) {
         if (++pwmCnt == PWM_TOP) pwmCnt = 0;
 
         PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
-        disp_coords(coords);
         LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
     }
-}
-
-uint16_t get_coords() {
-  // TODO
-  // Parse out negatives and only grab enough bits for 40
-  return SWITCHES & 0xbfbf;
-}
-
-uint16_t disp_coords(uint16_t coords) {
-  uint8_t x_coord, y_coord, x_tens_place, x_ones_place, y_tens_place,
-      y_ones_place;
-  _Bool is_x_neg = false, is_y_neg = false;
-  uint8_t sevenSegValue[4] = {0};
-
-  // Extract x and y
-  x_coord = (coords & 0xff00) >> 8;
-  y_coord = coords & 0x00ff;
-
-  if (x_coord & 0x80)
-    is_x_neg = true;
-  if (y_coord & 0x80)
-    is_y_neg = true;
-
-  if ((x_coord &= 0x7f) >= 40)
-    x_coord = 40;
-  if ((y_coord &= 0x7f) >= 40)
-    y_coord = 40;
-
-  // Suppose x_coord = 64,
-  // 64 % 10 = 4 (ones place)
-  // (64 - 4)/10 => 60/10 = 6 (tens place)
-  x_ones_place = x_coord % 10;
-  x_tens_place = (x_coord - x_ones_place) / 10;
-
-  y_ones_place = y_coord % 10;
-  y_tens_place = (y_coord - y_ones_place) / 10;
-
-  // If x is negative, clear first bit of digit to turn on decimal point
-  sevenSegValue[3] = (!is_x_neg) ? sevenSegLUT[x_tens_place] : (sevenSegLUT[x_tens_place] & 0x7f);
-  sevenSegValue[2] = sevenSegLUT[x_ones_place];
-  sevenSegValue[1] = (!is_y_neg) ? sevenSegLUT[y_tens_place] : (sevenSegLUT[y_tens_place] & 0x7f);
-  sevenSegValue[0] = sevenSegLUT[y_ones_place];
-  show_sseg(&sevenSegValue[0]); // Run this every while(1) iteration
-
-  return (x_coord << 8) | (y_coord);
 }
 
 void celebration() {
