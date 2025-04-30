@@ -65,7 +65,7 @@ const uint32_t *TIMERS[] = {ITP 0x40009000, ITP 0x40009100, ITP 0x4000A000, ITP 
                             ITP 0x4000B000, ITP 0x4000B100, ITP 0x4000C000, ITP 0x4000C100};
 
 // Type definitions
-typedef enum motion_type{
+typedef enum {
   left,
   right,
   straight,
@@ -73,9 +73,14 @@ typedef enum motion_type{
   idle,
 } motion_type;
 
-typedef enum state_type {
+typedef enum {
   wait_to_start
 } state_type;
+
+typedef struct {
+  uint8_t trig_offset;
+  uint8_t echo_offset; 
+} UltrasonicSensor;
 
 // Seven Segment Display LUT
 uint8_t sevenSegLUT[10] = {
@@ -117,6 +122,7 @@ void set_motion_type(motion_type mode);
 void PID_Controller(uint32_t L1, uint32_t R1);
 void drive_straight(uint32_t inches, uint16_t coords);
 void turn(uint32_t degrees, uint16_t coords);
+void read_2_uss();
 void celebration();
 
 // Global Variables for Duty Cycles
@@ -469,6 +475,10 @@ void turn(uint32_t degrees, uint16_t coords) {
         PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
         LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
     }
+}
+
+void read_2_uss() { 
+
 }
 
 void celebration() {
