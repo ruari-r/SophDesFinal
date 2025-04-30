@@ -128,6 +128,12 @@ void celebration();
 // Global Variables for Duty Cycles
 uint8_t g_LeftDutyCycle = 0x00;
 uint8_t g_RightDutyCycle = 0x00;
+uint32_t g_FrontDist = 0;
+uint32_t g_LeftDist = 0;
+
+// Initialize Ultrasonic Sensors
+UltrasonicSensor FrontUSS = {0, 3};
+UltrasonicSensor LeftUSS = {1, 2};
 
 // ###########################################################################################################
 
@@ -136,8 +142,9 @@ int main() {
   init_program();
 
   // set up PMOD DDRs
+  // 1 = Input, 0 = Output
   JA_DDR = 0x03;
-  JB_DDR = 0x08;
+  JB_DDR |= (1<<FrontUSS.echo_offset) | (1<<LeftUSS.echo_offset);
   JC_DDR = 0x00;
 
   ANODES = 0x00;
