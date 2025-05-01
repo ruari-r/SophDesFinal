@@ -102,9 +102,9 @@ _Bool delay_1s();
 _Bool delay_5s();
 _Bool delay_half_sec();
 void timer_2us(unsigned t);
-void set_trig_pin();
-void clear_trig_pin();
-_Bool read_echo_pin();
+void set_trig_pin(UltrasonicSensor uss);
+void clear_trig_pin(UltrasonicSensor uss);
+_Bool read_echo_pin(UltrasonicSensor uss);
 void restart_timer0();
 uint32_t get_timer0_value_us();
 uint32_t *convert_timer_to_hex_address(uint8_t timer_number);
@@ -122,7 +122,7 @@ void set_motion_type(motion_type mode);
 void PID_Controller(uint32_t L1, uint32_t R1);
 void drive_straight(uint32_t inches, uint16_t coords);
 void turn(uint32_t degrees, uint16_t coords);
-void read_2_uss();
+void read_2_uss_fsm();
 void celebration();
 
 // Global Variables for Duty Cycles
@@ -163,16 +163,16 @@ void init_program() {
 }
 
 // Functions for the Ultrasonic Sensor
-void set_trig_pin() {
-  JB |= 0x01; // 0000 0001 set trig pin
+void set_trig_pin(UltrasonicSensor uss) {
+  JB |= (1<<uss.trig_offset); // set trig pin
 }
 
-void clear_trig_pin() {
-  JB &= 0xFE; // 1111 1110 clear trig pin
+void clear_trig_pin(UltrasonicSensor uss) {
+  JB &= ~(1<<uss.trig_offset); // clear trig pin
 }
 
-_Bool read_echo_pin() {
-  bool echo = JB & 0x08; // Read echo signal from pin JB[4]
+_Bool read_echo_pin(UltrasonicSensor uss) {
+  bool echo = JB & (1<<uss.echo_offset); // Read echo signal from pin
   return echo;           // return echo pin value
 }
 
@@ -484,7 +484,9 @@ void turn(uint32_t degrees, uint16_t coords) {
     }
 }
 
-void read_2_uss() { 
+void read_2_uss_fsm() { 
+  set_trig_pin(FrontUSS);
+  set_trig_pin(LeftUSS);
 
 }
 

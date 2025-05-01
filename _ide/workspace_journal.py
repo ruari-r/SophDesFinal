@@ -11,3 +11,7 @@ status = platform.build()
 
 comp = client.create_app_component(name="Project2",platform = "$COMPONENT_LOCATION/../microblaze3/export/microblaze3/microblaze3.xpfm",domain = "standalone_microblaze_0")
 
+vitis.dispose()
+
+vitis.dispose()
+
