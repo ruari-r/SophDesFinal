@@ -517,7 +517,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * di
     break;
 
   case clear_trig:
-    if (read_stopwatch(5) >= US_PER_TICK*10) {
+  if (read_stopwatch(5) >= (uint32_t)(10.0f/US_PER_TICK + 0.5f)) {
       clear_trig_pin(*uss1);
       clear_trig_pin(*uss2);
       next_state = count_echo_duration;
@@ -563,9 +563,9 @@ void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * di
     // Use echo high time to calculate distance:
     //    hw_ticks*micros per ticks / 58 micros per cm = cm
     // Dereference pointers to update both distance readings
-    *(dist_2) = (uss2->echo_high_time)*US_PER_TICK / 58.0f;
     *(dist_1) = (uss1->echo_high_time)*US_PER_TICK / 58.0f;
-   
+    *(dist_2) = (uss2->echo_high_time)*US_PER_TICK / 58.0f;
+
     start_stopwatch(5);
     next_state = cooldown;
     break;
