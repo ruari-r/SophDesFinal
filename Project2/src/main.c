@@ -80,6 +80,7 @@ typedef enum {
 
 typedef enum {
   send_trig,  
+  clear_trig,
   count_echo_duration, 
   calculate_distance, 
   cooldown
@@ -132,8 +133,8 @@ void set_motion_type(motion_type mode);
 void PID_Controller(uint32_t L1, uint32_t R1);
 void drive_straight(uint32_t inches, uint16_t coords);
 void turn(uint32_t degrees, uint16_t coords);
-void read_2_uss_fsm(UltrasonicSensor uss1, 
-                    UltrasonicSensor uss2, 
+void read_2_uss_fsm(UltrasonicSensor * uss1, 
+                    UltrasonicSensor * uss2, 
                     float * dist_1, 
                     float * dist_2);
 void celebration();
@@ -163,7 +164,7 @@ int main() {
   ANODES = 0x00;
   
   while (1) {  
-    read_2_uss_fsm(FrontUSS, LeftUSS, &g_FrontDist, &g_LeftDist);
+    read_2_uss_fsm(&FrontUSS, &LeftUSS, &g_FrontDist, &g_LeftDist);
   }
 }
 
@@ -497,7 +498,7 @@ void turn(uint32_t degrees, uint16_t coords) {
     }
 }
 
-void read_2_uss_fsm(UltrasonicSensor uss1, UltrasonicSensor uss2, float * dist_1, float * dist_2) {
+void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * dist_1, float * dist_2) {
   static uss_state state = send_trig;
   static uss_state next_state = send_trig;
   static uint32_t count_1 = 0, count_2 = 0;
@@ -509,43 +510,49 @@ void read_2_uss_fsm(UltrasonicSensor uss1, UltrasonicSensor uss2, float * dist_1
   {
   case send_trig:
     // send a 10us pulse to the trig pin, then move to the next state i.e. wait for echo
-    set_trig_pin(uss1);
-    set_trig_pin(uss2);
-    timer_2us(5);
-    clear_trig_pin(uss1);
-    clear_trig_pin(uss2);
-    next_state = count_echo_duration;
+    set_trig_pin(*uss1);
+    set_trig_pin(*uss2);
+    start_stopwatch(5);
+    next_state = clear_trig;
+    break;
 
-    // reset the echo flags
-    echo1_read = false;
-    echo2_read = false;
+  case clear_trig:
+    if (read_stopwatch(5) >= US_PER_TICK*10) {
+      clear_trig_pin(*uss1);
+      clear_trig_pin(*uss2);
+      next_state = count_echo_duration;
+
+      // reset the echo flags
+      echo1_read = false;
+      echo2_read = false;
+    }
     break;
 
   case count_echo_duration:
     // Start each ultrasonic's hw timer when their echo pin goes high,
     // read it on the falling edge.
-    curr_echo_1 = read_echo_pin(FrontUSS);
-    curr_echo_2 = read_echo_pin(LeftUSS);
+    curr_echo_1 = read_echo_pin(*uss1);
+    curr_echo_2 = read_echo_pin(*uss2);
     if (curr_echo_1 && !last_echo_1) {  // 1 echo rising edge
-      start_stopwatch(uss1.hw_timer_channel);
+      start_stopwatch(uss1->hw_timer_channel);
     } 
     if (curr_echo_2 && !last_echo_2) {  // 2 echo rising edge
-      start_stopwatch(uss2.hw_timer_channel);
+      start_stopwatch(uss2->hw_timer_channel);
     } 
     if (!curr_echo_1 && last_echo_1) {  // 1 falling edge
-      uss1.echo_high_time = read_stopwatch(uss1.hw_timer_channel);
+      uss1->echo_high_time = read_stopwatch(uss1->hw_timer_channel);
       echo1_read = true;
     }
     if (!curr_echo_2 && last_echo_2) { // 2 falling edge
-      uss2.echo_high_time = read_stopwatch(uss2.hw_timer_channel);
+      uss2->echo_high_time = read_stopwatch(uss2->hw_timer_channel);
       echo2_read = true;
     }
 
     // Timeout if distance is more than DIST_THRESHOLD
     // We don't care what the actual value is as long as we know
     // whether its +/- our threshold
-    if (US_PER_TICK*read_stopwatch(uss1.hw_timer_channel)/58 >= DIST_THRESHOLD) echo1_read = true;
-    if (US_PER_TICK*read_stopwatch(uss2.hw_timer_channel)/58 >= DIST_THRESHOLD) echo2_read = true;
+    if (US_PER_TICK*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) echo1_read = true;
+    if (US_PER_TICK*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) echo2_read = true;
 
     if (echo1_read && echo2_read) next_state = calculate_distance;
     last_echo_1 = curr_echo_1;
@@ -556,8 +563,8 @@ void read_2_uss_fsm(UltrasonicSensor uss1, UltrasonicSensor uss2, float * dist_1
     // Use echo high time to calculate distance:
     //    hw_ticks*micros per ticks / 58 micros per cm = cm
     // Dereference pointers to update both distance readings
-    *(dist_2) = (uss2.echo_high_time)*US_PER_TICK / 58.0f;
-    *(dist_1) = (uss1.echo_high_time)*US_PER_TICK / 58.0f;
+    *(dist_2) = (uss2->echo_high_time)*US_PER_TICK / 58.0f;
+    *(dist_1) = (uss1->echo_high_time)*US_PER_TICK / 58.0f;
    
     start_stopwatch(5);
     next_state = cooldown;
