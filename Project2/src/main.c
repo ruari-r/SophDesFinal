@@ -144,10 +144,8 @@ uint8_t g_LeftDutyCycle = 0x00;
 uint8_t g_RightDutyCycle = 0x00;
 float g_FrontDist = 0.00f;
 float g_LeftDist = 0.00f;
-float front_buf[5] = [0.00f, 0.00f, 0.00f, 0.00f, 0.00f];
-float front_buf_sorted[5] = [0.00f, 0.00f, 0.00f, 0.00f, 0.00f];
-float left_buf[5] = [0.00f, 0.00f, 0.00f, 0.00f, 0.00f];
-float left_buf_sorted[5] = [0.00f, 0.00f, 0.00f, 0.00f, 0.00f];
+uint32_t front_buf[5] = {};
+uint32_t left_buf[5] = {};
 
 // Initialize Ultrasonic Sensors
 UltrasonicSensor FrontUSS = {0, 3, 3};
@@ -585,6 +583,48 @@ void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * di
     next_state = send_trig;
   }
   state = next_state;
+}
+
+void SelectionSort(int intArray[], int arrayLength)
+{
+    int smallest;
+
+    // Go through all array elements up to the second to last elemnt. On the last 
+    // iteration, there are only two elements left in the unsorted array to compare
+    for (int currentElement = 0; currentElement < arrayLength - 1; currentElement++)
+    {
+        // For the sub-array of currentElement to the end of the array, find the
+        // position of the smallest element
+
+        // Initialize the smallest element to the first element in the sub array
+        smallest = currentElement;
+
+        // Check ALL other elements in the sub array against the current smallest
+        for (int index = currentElement + 1; index < arrayLength; index++)
+        {
+            // If the current element is smaller than the smallest element, update the smallest
+            if (intArray[index] < intArray[smallest])
+            {
+                // We found a new smallest element
+                smallest = index;
+            }
+        }
+
+        // Now that the sub-array has been searched, we have the index of the smallest
+        // value. Now we can swap the values contained in the current element and the
+        // smallest element
+        Swap(&intArray[currentElement], &intArray[smallest]);
+    }
+}
+
+void Swap(int * pFirst, int * pSecond)
+{
+    // Store first in temp
+	int temp = *pFirst;
+
+    // Swap
+	*pFirst = *pSecond;
+	*pSecond = temp;
 }
 
 void celebration() {
