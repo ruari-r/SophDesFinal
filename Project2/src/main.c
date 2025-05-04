@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 // #include <xil_printf.h>
 
 #define BUTTONS (*(unsigned volatile *)0x40000000)
@@ -92,6 +93,7 @@ typedef struct {
   uint8_t trig_offset;
   uint8_t echo_offset; 
   uint8_t hw_timer_channel;
+  uint32_t raw_echo_high_time;
   uint32_t med_echo_high_time;
 } UltrasonicSensor;
 
@@ -139,8 +141,8 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
                     UltrasonicSensor * uss2, 
                     float * dist_1, 
                     float * dist_2,
-                    uint32_t * buf1,
-                    uint32_t * buf2);
+                    uint32_t buf1[5],
+                    uint32_t buf2[5]);
 void selection_sort(int intArray[], int arrayLength);
 static inline void swap(int * pFirst, int * pSecond);
 void celebration();
@@ -175,7 +177,7 @@ int main() {
   ANODES = 0x00;
   
   while (1) {  
-    read_2_uss_fsm(&FrontUSS, &LeftUSS, &g_FrontDist, &g_LeftDist);
+    read_2_uss_fsm(&FrontUSS, &LeftUSS, &g_FrontDist, &g_LeftDist, front_buf, left_buf);
   }
 }
 
@@ -513,19 +515,24 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
                     UltrasonicSensor * uss2, 
                     float * dist_1, 
                     float * dist_2,
-                    uint32_t * buf1[5],
-                    uint32_t * buf2[5]) {
+                    uint32_t buf1[5],
+                    uint32_t buf2[5]) {
   static uss_state state = send_trig;
-  static uss_state next_state = send_trig;
-  static uint32_t count_1 = 0, count_2 = 0;
-  static uint32_t echo1_high_time = 0, echo2_high_time = 0;
+  uss_state next_state = send_trig;
   static _Bool last_echo_1 = false, last_echo_2 = false;
   static _Bool curr_echo_1 = false, curr_echo_2 = false;
   static _Bool echo1_read = false, echo2_read = false;
+  uint32_t temp_buf1[5], temp_buf2[5];
 
   switch (state)
   {
   case send_trig:
+    // Ensure flags are cleared
+    echo1_read = false;
+    echo2_read = false;
+    last_echo_1 = false;
+    last_echo_2 = false;
+    
     // send a 10us pulse to the trig pin, then move to the next state i.e. wait for echo
     set_trig_pin(*uss1);
     set_trig_pin(*uss2);
@@ -557,11 +564,11 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
       start_stopwatch(uss2->hw_timer_channel);
     } 
     if (!curr_echo_1 && last_echo_1) {  // 1 falling edge
-      echo1_high_time = read_stopwatch(uss1->hw_timer_channel);
+      uss1->raw_echo_high_time = read_stopwatch(uss1->hw_timer_channel);
       echo1_read = true;
     }
     if (!curr_echo_2 && last_echo_2) { // 2 falling edge
-      echo2_high_time = read_stopwatch(uss2->hw_timer_channel);
+      uss2->raw_echo_high_time = read_stopwatch(uss2->hw_timer_channel);
       echo2_read = true;
     }
 
@@ -570,11 +577,11 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     // whether its +/- our threshold
     if (US_PER_TICK*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) {
       echo1_read = true;
-      echo1_high_time = read_stopwatch(uss1->hw_timer_channel);
+      uss1->raw_echo_high_time = read_stopwatch(uss1->hw_timer_channel);
     }
     if (US_PER_TICK*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) {
       echo2_read = true;
-      echo2_high_time = read_stopwatch(uss2->hw_timer_channel);
+      uss2->raw_echo_high_time = read_stopwatch(uss2->hw_timer_channel);
     }
 
     if (echo1_read && echo2_read) next_state = median_filter;
@@ -584,10 +591,20 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
 
   case median_filter:
     // Add new readings to buffers
-    
+    buf1[buf_write_index] = uss1->raw_echo_high_time;
+    buf2[buf_write_index] = uss2->raw_echo_high_time;
+    if (++buf_write_index == 5) {buf_write_index = 0;} // Reset back to index 0 if at 4
 
     // Create local copies of buffers
+    memcpy(temp_buf1, buf1, sizeof(temp_buf1));
+    memcpy(temp_buf2, buf2, sizeof(temp_buf2));
+    selection_sort(temp_buf1, 5);
+    selection_sort(temp_buf2, 5);
 
+    uss1->med_echo_high_time = temp_buf1[2];
+    uss2->med_echo_high_time = temp_buf2[2];
+
+    next_state = calculate_distance;
     break;
 
   case calculate_distance:
