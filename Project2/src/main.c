@@ -83,6 +83,7 @@ typedef enum {
   send_trig,  
   clear_trig,
   count_echo_duration, 
+  median_filter,
   calculate_distance, 
   cooldown
   } uss_state;
@@ -91,7 +92,7 @@ typedef struct {
   uint8_t trig_offset;
   uint8_t echo_offset; 
   uint8_t hw_timer_channel;
-  uint32_t echo_high_time;
+  uint32_t med_echo_high_time;
 } UltrasonicSensor;
 
 // Seven Segment Display LUT
@@ -137,7 +138,9 @@ void turn(uint32_t degrees, uint16_t coords);
 void read_2_uss_fsm(UltrasonicSensor * uss1, 
                     UltrasonicSensor * uss2, 
                     float * dist_1, 
-                    float * dist_2);
+                    float * dist_2,
+                    uint32_t * buf1,
+                    uint32_t * buf2);
 void selection_sort(int intArray[], int arrayLength);
 static inline void swap(int * pFirst, int * pSecond);
 void celebration();
@@ -506,10 +509,16 @@ void turn(uint32_t degrees, uint16_t coords) {
     }
 }
 
-void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * dist_1, float * dist_2) {
+void read_2_uss_fsm(UltrasonicSensor * uss1, 
+                    UltrasonicSensor * uss2, 
+                    float * dist_1, 
+                    float * dist_2,
+                    uint32_t * buf1[5],
+                    uint32_t * buf2[5]) {
   static uss_state state = send_trig;
   static uss_state next_state = send_trig;
   static uint32_t count_1 = 0, count_2 = 0;
+  static uint32_t echo1_high_time = 0, echo2_high_time = 0;
   static _Bool last_echo_1 = false, last_echo_2 = false;
   static _Bool curr_echo_1 = false, curr_echo_2 = false;
   static _Bool echo1_read = false, echo2_read = false;
@@ -548,31 +557,45 @@ void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * di
       start_stopwatch(uss2->hw_timer_channel);
     } 
     if (!curr_echo_1 && last_echo_1) {  // 1 falling edge
-      uss1->echo_high_time = read_stopwatch(uss1->hw_timer_channel);
+      echo1_high_time = read_stopwatch(uss1->hw_timer_channel);
       echo1_read = true;
     }
     if (!curr_echo_2 && last_echo_2) { // 2 falling edge
-      uss2->echo_high_time = read_stopwatch(uss2->hw_timer_channel);
+      echo2_high_time = read_stopwatch(uss2->hw_timer_channel);
       echo2_read = true;
     }
 
     // Timeout if distance is more than DIST_THRESHOLD
     // We don't care what the actual value is as long as we know
     // whether its +/- our threshold
-    if (US_PER_TICK*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) echo1_read = true;
-    if (US_PER_TICK*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) echo2_read = true;
+    if (US_PER_TICK*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) {
+      echo1_read = true;
+      echo1_high_time = read_stopwatch(uss1->hw_timer_channel);
+    }
+    if (US_PER_TICK*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) {
+      echo2_read = true;
+      echo2_high_time = read_stopwatch(uss2->hw_timer_channel);
+    }
 
-    if (echo1_read && echo2_read) next_state = calculate_distance;
+    if (echo1_read && echo2_read) next_state = median_filter;
     last_echo_1 = curr_echo_1;
     last_echo_2 = curr_echo_2;
+    break;
+
+  case median_filter:
+    // Add new readings to buffers
+    
+
+    // Create local copies of buffers
+
     break;
 
   case calculate_distance:
     // Use echo high time to calculate distance:
     //    hw_ticks*micros per ticks / 58 micros per cm = cm
     // Dereference pointers to update both distance readings
-    *(dist_1) = (uss1->echo_high_time)*US_PER_TICK / 58.0f;
-    *(dist_2) = (uss2->echo_high_time)*US_PER_TICK / 58.0f;
+    *(dist_1) = (uss1->med_echo_high_time)*US_PER_TICK / 58.0f;
+    *(dist_2) = (uss2->med_echo_high_time)*US_PER_TICK / 58.0f;
 
     start_stopwatch(5);
     next_state = cooldown;
@@ -619,7 +642,7 @@ void selection_sort(int intArray[], int arrayLength)
         // Now that the sub-array has been searched, we have the index of the smallest
         // value. Now we can swap the values contained in the current element and the
         // smallest element
-        Swap(&intArray[currentElement], &intArray[smallest]);
+        swap(&intArray[currentElement], &intArray[smallest]);
     }
 }
 
