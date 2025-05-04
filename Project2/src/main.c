@@ -527,13 +527,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
   switch (state)
   {
   case send_trig:
-    // Ensure flags are cleared
-    echo1_read = false;
-    echo2_read = false;
-    last_echo_1 = false;
-    last_echo_2 = false;
-    
-    // send a 10us pulse to the trig pin, then move to the next state i.e. wait for echo
+    // Start the 10us pulse by setting both trig pins to high then moving state
     set_trig_pin(*uss1);
     set_trig_pin(*uss2);
     start_stopwatch(5);
@@ -541,14 +535,18 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     break;
 
   case clear_trig:
-  if (read_stopwatch(5) >= (uint32_t)(10.0f/US_PER_TICK + 0.5f)) { // + 0.05f ensures the cast rounds correcly. 
+    // Wait until 10us have passed before clearing trig
+    // 10us/(1.77us/tick) gives ticks, cast converts to uint32_t, '+ 0.05f' ensures the cast rounds correcly. 
+    if (read_stopwatch(5) >= (uint32_t)(10.0f/US_PER_TICK + 0.5f)) {
       clear_trig_pin(*uss1);
       clear_trig_pin(*uss2);
       next_state = count_echo_duration;
 
-      // reset the echo flags
-      echo1_read = false;
-      echo2_read = false;
+    // Ensure flags are cleared
+    echo1_read = false;
+    echo2_read = false;
+    last_echo_1 = false;
+    last_echo_2 = false;
     }
     break;
 
@@ -574,7 +572,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
 
     // Timeout if distance is more than DIST_THRESHOLD
     // We don't care what the actual value is as long as we know
-    // whether its +/- our threshold
+    // whether its +/- our threshold, so grab the current value to put into buffer
     if (US_PER_TICK*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) {
       echo1_read = true;
       uss1->raw_echo_high_time = read_stopwatch(uss1->hw_timer_channel);
@@ -598,6 +596,14 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     // Create local copies of buffers
     memcpy(temp_buf1, buf1, sizeof(temp_buf1));
     memcpy(temp_buf2, buf2, sizeof(temp_buf2));
+
+    // Median filter:
+    // Take the last five readings from the uss and sort them using selection sort (from cs211)
+    // This will sort outliers (erroneously high or low readings) to the extrema
+    // taking the median ensures that we have a more consistent value
+    //
+    // For example, the burst hitting a wire and returning very quicjly could cause us to turn:
+    // With this filter, we need at least 3 measurements below the turn threshold before we believe them
     selection_sort(temp_buf1, MED_FILT_WINDOW);
     selection_sort(temp_buf2, MED_FILT_WINDOW);
 
