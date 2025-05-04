@@ -144,6 +144,10 @@ uint8_t g_LeftDutyCycle = 0x00;
 uint8_t g_RightDutyCycle = 0x00;
 float g_FrontDist = 0.00f;
 float g_LeftDist = 0.00f;
+float front_buf[5] = [0.00f, 0.00f, 0.00f, 0.00f, 0.00f];
+float front_buf_sorted[5] = [0.00f, 0.00f, 0.00f, 0.00f, 0.00f];
+float left_buf[5] = [0.00f, 0.00f, 0.00f, 0.00f, 0.00f];
+float left_buf_sorted[5] = [0.00f, 0.00f, 0.00f, 0.00f, 0.00f];
 
 // Initialize Ultrasonic Sensors
 UltrasonicSensor FrontUSS = {0, 3, 3};
