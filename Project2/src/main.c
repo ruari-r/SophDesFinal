@@ -50,6 +50,7 @@
 #define HW_TIME_PER_SEC 565001
 #define US_PER_TICK  1.77f
 #define USS_READ_INTERVAL 0.5f
+#define MED_FILT_WINDOW 5
 #define BASE_DUTY_CYCLE 0xBF
 #define KP 0.1
 #define KI 0.05
@@ -137,15 +138,20 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
                     UltrasonicSensor * uss2, 
                     float * dist_1, 
                     float * dist_2);
+void selection_sort(int intArray[], int arrayLength);
+static inline void swap(int * pFirst, int * pSecond);
 void celebration();
 
-// Global Variables for Duty Cycles and distance
+// Global Variables:
 uint8_t g_LeftDutyCycle = 0x00;
 uint8_t g_RightDutyCycle = 0x00;
 float g_FrontDist = 0.00f;
 float g_LeftDist = 0.00f;
-uint32_t front_buf[5] = {0};
-uint32_t left_buf[5] = {0};
+
+// Median Filtering
+static uint32_t front_buf[MED_FILT_WINDOW] = {0};
+static uint32_t left_buf[MED_FILT_WINDOW] = {0};
+uint8_t buf_write_index = 0; // Used for both front and left, updated simultaneously
 
 // Initialize Ultrasonic Sensors
 UltrasonicSensor FrontUSS = {0, 3, 3};
@@ -585,7 +591,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * di
   state = next_state;
 }
 
-void SelectionSort(int intArray[], int arrayLength)
+void selection_sort(int intArray[], int arrayLength)
 {
     int smallest;
 
@@ -617,7 +623,7 @@ void SelectionSort(int intArray[], int arrayLength)
     }
 }
 
-void Swap(int * pFirst, int * pSecond)
+static inline void swap(int * pFirst, int * pSecond)
 {
     // Store first in temp
 	int temp = *pFirst;
