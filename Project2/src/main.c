@@ -44,11 +44,12 @@
 #define INCREMENT 8
 #define QUAD_ENC_TOP 10000
 #define DUTY_MOTION_START 0X30
-#define TIMEOUT = 10000000 // How long to wait until assuming trig was lost
+#define DIST_THRESHOLD 5 //cm
 #define CNT_PER_REV 340
 #define CNT_PER_INCH 45
 #define HW_TIME_PER_SEC 565001
-#define TIME_TO_TARGET 5 // seconds
+#define US_PER_TICK  1.77f
+#define USS_READ_INTERVAL 0.5f
 #define BASE_DUTY_CYCLE 0xBF
 #define KP 0.1
 #define KI 0.05
@@ -65,7 +66,7 @@ const uint32_t *TIMERS[] = {ITP 0x40009000, ITP 0x40009100, ITP 0x4000A000, ITP 
                             ITP 0x4000B000, ITP 0x4000B100, ITP 0x4000C000, ITP 0x4000C100};
 
 // Type definitions
-typedef enum motion_type{
+typedef enum {
   left,
   right,
   straight,
@@ -73,16 +74,24 @@ typedef enum motion_type{
   idle,
 } motion_type;
 
-typedef enum state_type {
-  wait_for_coords,
-  delay_5,
-  check_y_turn,
-  turn_180,
-  drive_to_y,
-  x_turn,
-  drive_to_x,
-  hold_position
+typedef enum {
+  wait_to_start
 } state_type;
+
+typedef enum {
+  send_trig,  
+  clear_trig,
+  count_echo_duration, 
+  calculate_distance, 
+  cooldown
+  } uss_state;
+
+typedef struct {
+  uint8_t trig_offset;
+  uint8_t echo_offset; 
+  uint8_t hw_timer_channel;
+  uint32_t echo_high_time;
+} UltrasonicSensor;
 
 // Seven Segment Display LUT
 uint8_t sevenSegLUT[10] = {
@@ -104,9 +113,9 @@ _Bool delay_1s();
 _Bool delay_5s();
 _Bool delay_half_sec();
 void timer_2us(unsigned t);
-void set_trig_pin();
-void clear_trig_pin();
-_Bool read_echo_pin();
+void set_trig_pin(UltrasonicSensor uss);
+void clear_trig_pin(UltrasonicSensor uss);
+_Bool read_echo_pin(UltrasonicSensor uss);
 void restart_timer0();
 uint32_t get_timer0_value_us();
 uint32_t *convert_timer_to_hex_address(uint8_t timer_number);
@@ -124,13 +133,21 @@ void set_motion_type(motion_type mode);
 void PID_Controller(uint32_t L1, uint32_t R1);
 void drive_straight(uint32_t inches, uint16_t coords);
 void turn(uint32_t degrees, uint16_t coords);
-uint16_t get_coords();
-uint16_t disp_coords(uint16_t coords);
+void read_2_uss_fsm(UltrasonicSensor * uss1, 
+                    UltrasonicSensor * uss2, 
+                    float * dist_1, 
+                    float * dist_2);
 void celebration();
 
-// Global Variables for Duty Cycles
+// Global Variables for Duty Cycles and distance
 uint8_t g_LeftDutyCycle = 0x00;
 uint8_t g_RightDutyCycle = 0x00;
+float g_FrontDist = 0.00f;
+float g_LeftDist = 0.00f;
+
+// Initialize Ultrasonic Sensors
+UltrasonicSensor FrontUSS = {0, 3, 3};
+UltrasonicSensor LeftUSS = {1, 2, 4};
 
 // ###########################################################################################################
 
@@ -139,18 +156,15 @@ int main() {
   init_program();
 
   // set up PMOD DDRs
+  // 1 = Input, 0 = Output
   JA_DDR = 0x03;
-  JB_DDR = 0x08;
+  JB_DDR |= (1<<FrontUSS.echo_offset) | (1<<LeftUSS.echo_offset);
   JC_DDR = 0x00;
 
   ANODES = 0x00;
-
-  state_type state = wait_for_coords;
-  state_type next_state = wait_for_coords;
   
-
   while (1) {  
-    
+    read_2_uss_fsm(&FrontUSS, &LeftUSS, &g_FrontDist, &g_LeftDist);
   }
 }
 
@@ -163,16 +177,16 @@ void init_program() {
 }
 
 // Functions for the Ultrasonic Sensor
-void set_trig_pin() {
-  JB |= 0x01; // 0000 0001 set trig pin
+void set_trig_pin(UltrasonicSensor uss) {
+  JB |= (1<<uss.trig_offset); // set trig pin
 }
 
-void clear_trig_pin() {
-  JB &= 0xFE; // 1111 1110 clear trig pin
+void clear_trig_pin(UltrasonicSensor uss) {
+  JB &= ~(1<<uss.trig_offset); // clear trig pin
 }
 
-_Bool read_echo_pin() {
-  bool echo = JB & 0x08; // Read echo signal from pin JB[4]
+_Bool read_echo_pin(UltrasonicSensor uss) {
+  bool echo = JB & (1<<uss.echo_offset); // Read echo signal from pin
   return echo;           // return echo pin value
 }
 
@@ -451,7 +465,6 @@ void drive_straight(uint32_t inches, uint16_t coords) {
     if (++pwmCnt == PWM_TOP) pwmCnt = 0;
 
     PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
-    disp_coords(coords);
     LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
   } 
 }
@@ -481,54 +494,93 @@ void turn(uint32_t degrees, uint16_t coords) {
         if (++pwmCnt == PWM_TOP) pwmCnt = 0;
 
         PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
-        disp_coords(coords);
         LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
     }
 }
 
-uint16_t get_coords() {
-  // TODO
-  // Parse out negatives and only grab enough bits for 40
-  return SWITCHES & 0xbfbf;
-}
+void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * dist_1, float * dist_2) {
+  static uss_state state = send_trig;
+  static uss_state next_state = send_trig;
+  static uint32_t count_1 = 0, count_2 = 0;
+  static _Bool last_echo_1 = false, last_echo_2 = false;
+  static _Bool curr_echo_1 = false, curr_echo_2 = false;
+  static _Bool echo1_read = false, echo2_read = false;
 
-uint16_t disp_coords(uint16_t coords) {
-  uint8_t x_coord, y_coord, x_tens_place, x_ones_place, y_tens_place,
-      y_ones_place;
-  _Bool is_x_neg = false, is_y_neg = false;
-  uint8_t sevenSegValue[4] = {0};
+  switch (state)
+  {
+  case send_trig:
+    // send a 10us pulse to the trig pin, then move to the next state i.e. wait for echo
+    set_trig_pin(*uss1);
+    set_trig_pin(*uss2);
+    start_stopwatch(5);
+    next_state = clear_trig;
+    break;
 
-  // Extract x and y
-  x_coord = (coords & 0xff00) >> 8;
-  y_coord = coords & 0x00ff;
+  case clear_trig:
+  if (read_stopwatch(5) >= (uint32_t)(10.0f/US_PER_TICK + 0.5f)) {
+      clear_trig_pin(*uss1);
+      clear_trig_pin(*uss2);
+      next_state = count_echo_duration;
 
-  if (x_coord & 0x80)
-    is_x_neg = true;
-  if (y_coord & 0x80)
-    is_y_neg = true;
+      // reset the echo flags
+      echo1_read = false;
+      echo2_read = false;
+    }
+    break;
 
-  if ((x_coord &= 0x7f) >= 40)
-    x_coord = 40;
-  if ((y_coord &= 0x7f) >= 40)
-    y_coord = 40;
+  case count_echo_duration:
+    // Start each ultrasonic's hw timer when their echo pin goes high,
+    // read it on the falling edge.
+    curr_echo_1 = read_echo_pin(*uss1);
+    curr_echo_2 = read_echo_pin(*uss2);
+    if (curr_echo_1 && !last_echo_1) {  // 1 echo rising edge
+      start_stopwatch(uss1->hw_timer_channel);
+    } 
+    if (curr_echo_2 && !last_echo_2) {  // 2 echo rising edge
+      start_stopwatch(uss2->hw_timer_channel);
+    } 
+    if (!curr_echo_1 && last_echo_1) {  // 1 falling edge
+      uss1->echo_high_time = read_stopwatch(uss1->hw_timer_channel);
+      echo1_read = true;
+    }
+    if (!curr_echo_2 && last_echo_2) { // 2 falling edge
+      uss2->echo_high_time = read_stopwatch(uss2->hw_timer_channel);
+      echo2_read = true;
+    }
 
-  // Suppose x_coord = 64,
-  // 64 % 10 = 4 (ones place)
-  // (64 - 4)/10 => 60/10 = 6 (tens place)
-  x_ones_place = x_coord % 10;
-  x_tens_place = (x_coord - x_ones_place) / 10;
+    // Timeout if distance is more than DIST_THRESHOLD
+    // We don't care what the actual value is as long as we know
+    // whether its +/- our threshold
+    if (US_PER_TICK*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) echo1_read = true;
+    if (US_PER_TICK*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) echo2_read = true;
 
-  y_ones_place = y_coord % 10;
-  y_tens_place = (y_coord - y_ones_place) / 10;
+    if (echo1_read && echo2_read) next_state = calculate_distance;
+    last_echo_1 = curr_echo_1;
+    last_echo_2 = curr_echo_2;
+    break;
 
-  // If x is negative, clear first bit of digit to turn on decimal point
-  sevenSegValue[3] = (!is_x_neg) ? sevenSegLUT[x_tens_place] : (sevenSegLUT[x_tens_place] & 0x7f);
-  sevenSegValue[2] = sevenSegLUT[x_ones_place];
-  sevenSegValue[1] = (!is_y_neg) ? sevenSegLUT[y_tens_place] : (sevenSegLUT[y_tens_place] & 0x7f);
-  sevenSegValue[0] = sevenSegLUT[y_ones_place];
-  show_sseg(&sevenSegValue[0]); // Run this every while(1) iteration
+  case calculate_distance:
+    // Use echo high time to calculate distance:
+    //    hw_ticks*micros per ticks / 58 micros per cm = cm
+    // Dereference pointers to update both distance readings
+    *(dist_1) = (uss1->echo_high_time)*US_PER_TICK / 58.0f;
+    *(dist_2) = (uss2->echo_high_time)*US_PER_TICK / 58.0f;
 
-  return (x_coord << 8) | (y_coord);
+    start_stopwatch(5);
+    next_state = cooldown;
+    break;
+
+  case cooldown:
+    if (read_stopwatch(5) >= USS_READ_INTERVAL*HW_TIME_PER_SEC)
+    {
+      next_state = send_trig;
+    }
+    break;
+
+  default:
+    next_state = send_trig;
+  }
+  state = next_state;
 }
 
 void celebration() {
