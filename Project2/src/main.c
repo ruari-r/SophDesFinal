@@ -141,8 +141,8 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
                     UltrasonicSensor * uss2, 
                     float * dist_1, 
                     float * dist_2,
-                    uint32_t buf1[5],
-                    uint32_t buf2[5]);
+                    uint32_t buf1[MED_FILT_WINDOW],
+                    uint32_t buf2[MED_FILT_WINDOW]);
 void selection_sort(int intArray[], int arrayLength);
 static inline void swap(int * pFirst, int * pSecond);
 void celebration();
@@ -515,14 +515,14 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
                     UltrasonicSensor * uss2, 
                     float * dist_1, 
                     float * dist_2,
-                    uint32_t buf1[5],
-                    uint32_t buf2[5]) {
+                    uint32_t buf1[MED_FILT_WINDOW],
+                    uint32_t buf2[MED_FILT_WINDOW]) {
   static uss_state state = send_trig;
   uss_state next_state = send_trig;
   static _Bool last_echo_1 = false, last_echo_2 = false;
   static _Bool curr_echo_1 = false, curr_echo_2 = false;
   static _Bool echo1_read = false, echo2_read = false;
-  uint32_t temp_buf1[5], temp_buf2[5];
+  uint32_t temp_buf1[MED_FILT_WINDOW], temp_buf2[MED_FILT_WINDOW];
 
   switch (state)
   {
@@ -541,7 +541,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     break;
 
   case clear_trig:
-  if (read_stopwatch(5) >= (uint32_t)(10.0f/US_PER_TICK + 0.5f)) {
+  if (read_stopwatch(5) >= (uint32_t)(10.0f/US_PER_TICK + 0.5f)) { // + 0.05f ensures the cast rounds correcly. 
       clear_trig_pin(*uss1);
       clear_trig_pin(*uss2);
       next_state = count_echo_duration;
@@ -593,16 +593,16 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     // Add new readings to buffers
     buf1[buf_write_index] = uss1->raw_echo_high_time;
     buf2[buf_write_index] = uss2->raw_echo_high_time;
-    if (++buf_write_index == 5) {buf_write_index = 0;} // Reset back to index 0 if at 4
+    if (++buf_write_index == MED_FILT_WINDOW) {buf_write_index = 0;} // Reset back to index 0 if at max
 
     // Create local copies of buffers
     memcpy(temp_buf1, buf1, sizeof(temp_buf1));
     memcpy(temp_buf2, buf2, sizeof(temp_buf2));
-    selection_sort(temp_buf1, 5);
-    selection_sort(temp_buf2, 5);
+    selection_sort(temp_buf1, MED_FILT_WINDOW);
+    selection_sort(temp_buf2, MED_FILT_WINDOW);
 
-    uss1->med_echo_high_time = temp_buf1[2];
-    uss2->med_echo_high_time = temp_buf2[2];
+    uss1->med_echo_high_time = temp_buf1[MED_FILT_WINDOW/2]; // Integer division (e.g. 5/2 = 2)
+    uss2->med_echo_high_time = temp_buf2[MED_FILT_WINDOW/2];
 
     next_state = calculate_distance;
     break;
