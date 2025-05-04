@@ -50,7 +50,7 @@
 #define CNT_PER_INCH 45
 #define HW_TIME_PER_SEC 565001
 #define US_PER_TICK  1.77f
-#define USS_READ_INTERVAL 0.5f
+#define USS_READ_INTERVAL 0.060f // 60ms delay (4m max range)
 #define MED_FILT_WINDOW 5
 #define BASE_DUTY_CYCLE 0xBF
 #define KP 0.1
