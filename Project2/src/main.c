@@ -1,6 +1,5 @@
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
 // #include <xil_printf.h>
 
 #define BUTTONS (*(unsigned volatile *)0x40000000)
