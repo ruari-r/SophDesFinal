@@ -506,7 +506,8 @@ void drive_straight(drive_state cmd) {
     case stop_driving:
       g_LeftDutyCycle = 0;
       g_RightDutyCycle = 0;
-      pwmCnt = 0;
+      JC &= ~(1 << L_PWM_OFFSET);
+      JC &= ~(1 << R_PWM_OFFSET);
   }
   
 }
