@@ -195,47 +195,91 @@ int main() {
   _Bool btnU = false, btnD = false, btnL = false, btnR = false;
   maze_state state = wait_to_start;
   maze_state next_state;
-  maze_state last_state;
+  maze_state last_state = wait_to_start;
+  motion_type turn_dir;
 
   while (1) {  
+    next_state = state; // Ensure we never accidentally leave state without checking
     btnU = UpButton_pressed();
     btnD = DownButton_pressed();
     btnL = LeftButton_pressed();
     btnR = RightButton_pressed();
+    g_NewReading = false; // Reset new reading flag so that it will only be high if uss fsm sets it
+    read_2_uss_fsm(&FrontUSS, &LeftUSS, 
+                   &g_FrontDist, &g_LeftDist,
+                   front_buf, left_buf);
+    
     switch (state) {
     case wait_to_start:
-      
+      if (btnU) {
+        next_state = initalize_drive;
+        start_stopwatch(6);
+        while (read_stopwatch(6) < HW_TIME_PER_SEC*3);
+      }
       break;
-    
+
     case update_uss:
-
+      if (g_FrontDist > DIST_THRESHOLD && g_LeftDist <= DIST_THRESHOLD) {next_state = left_only;}
+      else if (g_FrontDist <= DIST_THRESHOLD && g_LeftDist <= DIST_THRESHOLD) {next_state = left_and_front;}
+      else if (g_FrontDist <= DIST_THRESHOLD && g_LeftDist > DIST_THRESHOLD) {next_state = front_only;}
+      else if (g_FrontDist > DIST_THRESHOLD && g_LeftDist > DIST_THRESHOLD) {next_state = no_left_or_front;}
       break;
-    
-    case initalize_drive:
 
+    case initalize_drive:
+      set_motion_type(straight);
+      drive_straight(init_drive);
+      next_state = update_uss;
       break;
     
     case left_only:
-
+      last_state = state;
+      drive_straight(driving);
+      if (g_NewReading) {next_state = update_uss;}
       break;
     
     case left_and_front:
-
+      drive_straight(stop_driving);
+      set_motion_type(stop);
+      turn_dir = right;
+      if (last_state == left_and_front) {
+        next_state = win;
+        break;
+      }
+      last_state = state;
+      next_state = turn_state;
       break;
 
     case front_only:
-
+      drive_straight(stop_driving);
+      set_motion_type(stop);
+      turn_dir = left;
+      last_state = state;
+      next_state = turn_state;
       break;
 
     case no_left_or_front:
-
+      drive_straight(stop_driving);
+      set_motion_type(stop);
+      turn_dir = left;
+      last_state = state;
+      next_state = turn_state;
       break;
     
     case turn_state:
+      set_motion_type(turn_dir);
+      turn(90);
+      
+      next_state = initalize_drive;
+      break;
 
+    case win:
+      set_motion_type(stop);
+      celebration();
+      if (btnD) {next_state = wait_to_start;}
       break;
 
     default:
+      next_state = initalize_drive;
       break;
     }
     state = next_state;
