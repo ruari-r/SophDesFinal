@@ -413,13 +413,13 @@ void set_motion_type(motion_type mode) {
   }
 }
 
-uint8_t scale_correction(int32_t raw_correction) {
+inline uint8_t scale_correction(int32_t raw_correction) {
   float raw_correction_mag = (raw_correction >= 0) ? raw_correction : -raw_correction;
   if (raw_correction >= 255.00f) return 0xFF;
   else return (uint8_t) raw_correction_mag;
 }
 
-void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1) {
+inline void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1) {
   static int32_t error_sum = 0, error_prev = 0;
   if (reset) {
     error_sum = 0;
