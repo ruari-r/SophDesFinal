@@ -152,7 +152,7 @@ void set_motion_type(motion_type mode);
 void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1);
 void drive_straight_distance(uint32_t inches);
 void drive_straight(drive_state cmd);
-void turn(uint32_t degrees, uint16_t coords);
+void turn(uint32_t degrees);
 void read_2_uss_fsm(UltrasonicSensor * uss1, 
                     UltrasonicSensor * uss2, 
                     float * dist_1, 
@@ -565,7 +565,7 @@ void drive_straight(drive_state cmd) {
   
 }
 
-void turn(uint32_t degrees, uint16_t coords) {   
+void turn(uint32_t degrees) {   
     PID_Controller(true, 0, 0);
     read_L1_quad_enc(1);
     read_R1_quad_enc(1);
