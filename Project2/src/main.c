@@ -77,7 +77,16 @@ typedef enum {
 } motion_type;
 
 typedef enum {
-  wait_to_start
+  wait_to_start,
+  initalize_drive,
+  update_uss,
+  drive,
+  left_only,
+  left_and_front,
+  front_only,
+  no_left_or_front,
+  turn,
+  finished,
 } maze_state;
 
 typedef enum {
