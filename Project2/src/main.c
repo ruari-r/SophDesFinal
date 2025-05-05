@@ -175,8 +175,8 @@ static uint32_t left_buf[MED_FILT_WINDOW] = {0};
 uint8_t buf_write_index = 0; // Used for both front and left, updated simultaneously
 
 // Initialize Ultrasonic Sensors
-UltrasonicSensor FrontUSS = {0, 3, 3};
-UltrasonicSensor LeftUSS = {1, 2, 4};
+UltrasonicSensor FrontUSS = {0, 3, 3, 0, 0};
+UltrasonicSensor LeftUSS = {1, 2, 4, 0, 0};
 
 // ###########################################################################################################
 

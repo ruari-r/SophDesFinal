@@ -1,7 +1,7 @@
 sdt: hw_artifacts\microblaze_0_baremetal.dts
 family: artix7
 path: C:\Users\rlran\SophDes_Final\Project2\microblaze3\microblaze_0\standalone_microblaze_0\bsp
-config: default
+config: None
 os: standalone
 os_info:
   standalone:
