@@ -434,34 +434,18 @@ void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1) {
   uint8_t correction_scaled = scale_correction(correction);
 
   if (error > 0) {
-    if (g_RightDutyCycle + correction_scaled > 0xFF) {
-      g_RightDutyCycle = 0xFF;
-    }
-    else {
-      g_RightDutyCycle += correction_scaled;
-    }
+    if (g_RightDutyCycle + correction_scaled > 0xFF) {g_RightDutyCycle = 0xFF;}
+    else {g_RightDutyCycle += correction_scaled;}
 
-	if (g_LeftDutyCycle - correction_scaled < 0xA0) {
-      g_LeftDutyCycle = 0xA0;
-    }
-	else {
-      g_LeftDutyCycle -= correction_scaled;
-    }
+    if (g_LeftDutyCycle - correction_scaled < 0xA0) {g_LeftDutyCycle = 0xA0;}
+    else {g_LeftDutyCycle -= correction_scaled;}
   } 
   else if (error < 0) { 
-    if (g_LeftDutyCycle + correction_scaled > 0xFF) {
-      g_LeftDutyCycle = 0xFF;
-    }
-    else {
-      g_LeftDutyCycle += correction_scaled;
-    }
+    if (g_LeftDutyCycle + correction_scaled > 0xFF) {g_LeftDutyCycle = 0xFF;}
+    else {g_LeftDutyCycle += correction_scaled;}
 
-	if (g_RightDutyCycle - correction_scaled < 0xA0) {
-      g_RightDutyCycle = 0xA0;
-    }
-	else {
-      g_RightDutyCycle -= correction_scaled;
-    }
+    if (g_RightDutyCycle - correction_scaled < 0xA0) {g_RightDutyCycle = 0xA0;}
+    else {g_RightDutyCycle -= correction_scaled;}
   }
 	
 	error_prev = error;
