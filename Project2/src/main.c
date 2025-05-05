@@ -134,7 +134,7 @@ _Bool RightButton_pressed();
 uint32_t read_L1_quad_enc(_Bool reset);
 uint32_t read_R1_quad_enc(_Bool reset);
 void set_motion_type(motion_type mode);
-void PID_Controller(uint32_t L1, uint32_t R1);
+void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1);
 void drive_straight_distance(uint32_t inches);
 void drive_straight();
 void turn(uint32_t degrees, uint16_t coords);
@@ -413,8 +413,12 @@ uint8_t scale_correction(int32_t raw_correction) {
   else return (uint8_t) raw_correction_mag;
 }
 
-void PID_Controller(uint32_t L1, uint32_t R1) {
+void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1) {
   static int32_t error_sum = 0, error_prev = 0;
+  if (reset) {
+    error_sum = 0;
+    error_prev = 0;
+  }
   int32_t error = (int32_t)L1 - (int32_t)R1;
   error_sum += error;
 	
@@ -478,7 +482,7 @@ void drive_straight_distance(uint32_t inches) {
 
     if (++pwmCnt == PWM_TOP) pwmCnt = 0;
 
-    PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
+    PID_Controller(0, read_L1_quad_enc(0), read_R1_quad_enc(0));
     LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
   } 
 }
@@ -498,7 +502,7 @@ void drive_straight() {
 
   if (++pwmCnt == PWM_TOP) {pwmCnt = 0;}
 
-  PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
+  PID_Controller(0, read_L1_quad_enc(0), read_R1_quad_enc(0));
   LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
 }
 
