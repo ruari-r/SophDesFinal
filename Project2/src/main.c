@@ -513,7 +513,7 @@ void set_motion_type(motion_type mode) {
 
 inline uint8_t scale_correction(int32_t raw_correction) {
   float raw_correction_mag = (raw_correction >= 0) ? raw_correction : -raw_correction;
-  if (raw_correction >= 255.00f) return 0xFF;
+  if (raw_correction_mag >= 255.00f) return 0xFF;
   else return (uint8_t) raw_correction_mag;
 }
 
