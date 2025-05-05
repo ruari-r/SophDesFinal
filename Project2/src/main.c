@@ -45,7 +45,7 @@
 #define INCREMENT 8
 #define QUAD_ENC_TOP 10000
 #define DUTY_MOTION_START 0X30
-#define DIST_THRESHOLD 5 //cm
+#define DIST_THRESHOLD 13 //cm
 #define CNT_PER_REV 340
 #define CNT_PER_INCH 45
 #define HW_TIME_PER_SEC 565001
