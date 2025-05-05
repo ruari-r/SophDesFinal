@@ -159,7 +159,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
                     float * dist_2,
                     uint32_t buf1[MED_FILT_WINDOW],
                     uint32_t buf2[MED_FILT_WINDOW]);
-void selection_sort(int intArray[], int arrayLength);
+void selection_sort(uint32_t intArray[], int arrayLength);
 static inline void swap(int * pFirst, int * pSecond);
 void celebration();
 
@@ -721,7 +721,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
   state = next_state;
 }
 
-void selection_sort(int intArray[], int arrayLength)
+void selection_sort(uint32_t intArray[], int arrayLength)
 {
     int smallest;
 
