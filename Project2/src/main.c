@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 // #include <xil_printf.h>
 
 #define BUTTONS (*(unsigned volatile *)0x40000000)
@@ -49,7 +50,8 @@
 #define CNT_PER_INCH 45
 #define HW_TIME_PER_SEC 565001
 #define US_PER_TICK  1.77f
-#define USS_READ_INTERVAL 0.5f
+#define USS_READ_INTERVAL 0.060f // 60ms delay (4m max range)
+#define MED_FILT_WINDOW 5
 #define BASE_DUTY_CYCLE 0xBF
 #define KP 0.1
 #define KI 0.05
@@ -82,6 +84,7 @@ typedef enum {
   send_trig,  
   clear_trig,
   count_echo_duration, 
+  median_filter,
   calculate_distance, 
   cooldown
   } uss_state;
@@ -90,7 +93,8 @@ typedef struct {
   uint8_t trig_offset;
   uint8_t echo_offset; 
   uint8_t hw_timer_channel;
-  uint32_t echo_high_time;
+  uint32_t raw_echo_high_time;
+  uint32_t med_echo_high_time;
 } UltrasonicSensor;
 
 // Seven Segment Display LUT
@@ -136,14 +140,23 @@ void turn(uint32_t degrees, uint16_t coords);
 void read_2_uss_fsm(UltrasonicSensor * uss1, 
                     UltrasonicSensor * uss2, 
                     float * dist_1, 
-                    float * dist_2);
+                    float * dist_2,
+                    uint32_t buf1[MED_FILT_WINDOW],
+                    uint32_t buf2[MED_FILT_WINDOW]);
+void selection_sort(int intArray[], int arrayLength);
+static inline void swap(int * pFirst, int * pSecond);
 void celebration();
 
-// Global Variables for Duty Cycles and distance
+// Global Variables:
 uint8_t g_LeftDutyCycle = 0x00;
 uint8_t g_RightDutyCycle = 0x00;
 float g_FrontDist = 0.00f;
 float g_LeftDist = 0.00f;
+
+// Median Filtering
+static uint32_t front_buf[MED_FILT_WINDOW] = {0};
+static uint32_t left_buf[MED_FILT_WINDOW] = {0};
+uint8_t buf_write_index = 0; // Used for both front and left, updated simultaneously
 
 // Initialize Ultrasonic Sensors
 UltrasonicSensor FrontUSS = {0, 3, 3};
@@ -164,7 +177,7 @@ int main() {
   ANODES = 0x00;
   
   while (1) {  
-    read_2_uss_fsm(&FrontUSS, &LeftUSS, &g_FrontDist, &g_LeftDist);
+    read_2_uss_fsm(&FrontUSS, &LeftUSS, &g_FrontDist, &g_LeftDist, front_buf, left_buf);
   }
 }
 
@@ -498,18 +511,23 @@ void turn(uint32_t degrees, uint16_t coords) {
     }
 }
 
-void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * dist_1, float * dist_2) {
+void read_2_uss_fsm(UltrasonicSensor * uss1, 
+                    UltrasonicSensor * uss2, 
+                    float * dist_1, 
+                    float * dist_2,
+                    uint32_t buf1[MED_FILT_WINDOW],
+                    uint32_t buf2[MED_FILT_WINDOW]) {
   static uss_state state = send_trig;
-  static uss_state next_state = send_trig;
-  static uint32_t count_1 = 0, count_2 = 0;
+  uss_state next_state = state;
   static _Bool last_echo_1 = false, last_echo_2 = false;
   static _Bool curr_echo_1 = false, curr_echo_2 = false;
   static _Bool echo1_read = false, echo2_read = false;
+  uint32_t temp_buf1[MED_FILT_WINDOW], temp_buf2[MED_FILT_WINDOW];
 
   switch (state)
   {
   case send_trig:
-    // send a 10us pulse to the trig pin, then move to the next state i.e. wait for echo
+    // Start the 10us pulse by setting both trig pins to high then moving state
     set_trig_pin(*uss1);
     set_trig_pin(*uss2);
     start_stopwatch(5);
@@ -517,14 +535,18 @@ void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * di
     break;
 
   case clear_trig:
-  if (read_stopwatch(5) >= (uint32_t)(10.0f/US_PER_TICK + 0.5f)) {
+    // Wait until 10us have passed before clearing trig
+    // 10us/(1.77us/tick) gives ticks, cast converts to uint32_t, '+ 0.05f' ensures the cast rounds correcly. 
+    if (read_stopwatch(5) >= (uint32_t)(10.0f/US_PER_TICK + 0.5f)) {
       clear_trig_pin(*uss1);
       clear_trig_pin(*uss2);
       next_state = count_echo_duration;
 
-      // reset the echo flags
+      // Ensure flags are cleared
       echo1_read = false;
       echo2_read = false;
+      last_echo_1 = false;
+      last_echo_2 = false;
     }
     break;
 
@@ -540,31 +562,63 @@ void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * di
       start_stopwatch(uss2->hw_timer_channel);
     } 
     if (!curr_echo_1 && last_echo_1) {  // 1 falling edge
-      uss1->echo_high_time = read_stopwatch(uss1->hw_timer_channel);
+      uss1->raw_echo_high_time = read_stopwatch(uss1->hw_timer_channel);
       echo1_read = true;
     }
     if (!curr_echo_2 && last_echo_2) { // 2 falling edge
-      uss2->echo_high_time = read_stopwatch(uss2->hw_timer_channel);
+      uss2->raw_echo_high_time = read_stopwatch(uss2->hw_timer_channel);
       echo2_read = true;
     }
 
     // Timeout if distance is more than DIST_THRESHOLD
     // We don't care what the actual value is as long as we know
-    // whether its +/- our threshold
-    if (US_PER_TICK*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) echo1_read = true;
-    if (US_PER_TICK*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) echo2_read = true;
+    // whether its +/- our threshold, so grab the current value to put into buffer
+    if (US_PER_TICK*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) {
+      echo1_read = true;
+      uss1->raw_echo_high_time = read_stopwatch(uss1->hw_timer_channel);
+    }
+    if (US_PER_TICK*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) {
+      echo2_read = true;
+      uss2->raw_echo_high_time = read_stopwatch(uss2->hw_timer_channel);
+    }
 
-    if (echo1_read && echo2_read) next_state = calculate_distance;
+    if (echo1_read && echo2_read) next_state = median_filter;
     last_echo_1 = curr_echo_1;
     last_echo_2 = curr_echo_2;
+    break;
+
+  case median_filter:
+    // Add new readings to buffers
+    buf1[buf_write_index] = uss1->raw_echo_high_time;
+    buf2[buf_write_index] = uss2->raw_echo_high_time;
+    if (++buf_write_index == MED_FILT_WINDOW) {buf_write_index = 0;} // Reset back to index 0 if at max
+
+    // Create local copies of buffers
+    memcpy(temp_buf1, buf1, sizeof(temp_buf1));
+    memcpy(temp_buf2, buf2, sizeof(temp_buf2));
+
+    // Median filter:
+    // Take the last five readings from the uss and sort them using selection sort (from cs211)
+    // This will sort outliers (erroneously high or low readings) to the extrema
+    // taking the median ensures that we have a more consistent value
+    //
+    // For example, the burst hitting a wire and returning very quicjly could cause us to turn:
+    // With this filter, we need at least 3 measurements below the turn threshold before we believe them
+    selection_sort(temp_buf1, MED_FILT_WINDOW);
+    selection_sort(temp_buf2, MED_FILT_WINDOW);
+
+    uss1->med_echo_high_time = temp_buf1[MED_FILT_WINDOW/2]; // Integer division (e.g. 5/2 = 2)
+    uss2->med_echo_high_time = temp_buf2[MED_FILT_WINDOW/2];
+
+    next_state = calculate_distance;
     break;
 
   case calculate_distance:
     // Use echo high time to calculate distance:
     //    hw_ticks*micros per ticks / 58 micros per cm = cm
     // Dereference pointers to update both distance readings
-    *(dist_1) = (uss1->echo_high_time)*US_PER_TICK / 58.0f;
-    *(dist_2) = (uss2->echo_high_time)*US_PER_TICK / 58.0f;
+    *(dist_1) = (uss1->med_echo_high_time)*US_PER_TICK / 58.0f;
+    *(dist_2) = (uss2->med_echo_high_time)*US_PER_TICK / 58.0f;
 
     start_stopwatch(5);
     next_state = cooldown;
@@ -581,6 +635,48 @@ void read_2_uss_fsm(UltrasonicSensor * uss1, UltrasonicSensor * uss2, float * di
     next_state = send_trig;
   }
   state = next_state;
+}
+
+void selection_sort(int intArray[], int arrayLength)
+{
+    int smallest;
+
+    // Go through all array elements up to the second to last elemnt. On the last 
+    // iteration, there are only two elements left in the unsorted array to compare
+    for (int currentElement = 0; currentElement < arrayLength - 1; currentElement++)
+    {
+        // For the sub-array of currentElement to the end of the array, find the
+        // position of the smallest element
+
+        // Initialize the smallest element to the first element in the sub array
+        smallest = currentElement;
+
+        // Check ALL other elements in the sub array against the current smallest
+        for (int index = currentElement + 1; index < arrayLength; index++)
+        {
+            // If the current element is smaller than the smallest element, update the smallest
+            if (intArray[index] < intArray[smallest])
+            {
+                // We found a new smallest element
+                smallest = index;
+            }
+        }
+
+        // Now that the sub-array has been searched, we have the index of the smallest
+        // value. Now we can swap the values contained in the current element and the
+        // smallest element
+        swap(&intArray[currentElement], &intArray[smallest]);
+    }
+}
+
+static inline void swap(int * pFirst, int * pSecond)
+{
+    // Store first in temp
+	int temp = *pFirst;
+
+    // Swap
+	*pFirst = *pSecond;
+	*pSecond = temp;
 }
 
 void celebration() {
