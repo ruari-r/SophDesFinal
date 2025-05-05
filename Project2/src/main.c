@@ -86,7 +86,7 @@ typedef enum {
   front_only,
   no_left_or_front,
   turn_state,
-  finished,
+  win,
 } maze_state;
 
 typedef enum {
