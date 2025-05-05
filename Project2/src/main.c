@@ -135,7 +135,8 @@ uint32_t read_L1_quad_enc(_Bool reset);
 uint32_t read_R1_quad_enc(_Bool reset);
 void set_motion_type(motion_type mode);
 void PID_Controller(uint32_t L1, uint32_t R1);
-void drive_straight(uint32_t inches, uint16_t coords);
+void drive_straight_distance(uint32_t inches);
+void drive_straight();
 void turn(uint32_t degrees, uint16_t coords);
 void read_2_uss_fsm(UltrasonicSensor * uss1, 
                     UltrasonicSensor * uss2, 
@@ -457,7 +458,32 @@ void PID_Controller(uint32_t L1, uint32_t R1) {
 }
 
 // Functions for navigation
-void drive_straight(uint32_t inches, uint16_t coords) {
+void drive_straight_distance(uint32_t inches) {
+  read_L1_quad_enc(1);
+  read_R1_quad_enc(1);  
+  
+  g_LeftDutyCycle = 0xCF;
+  g_RightDutyCycle = 0xCF;
+
+  // Inches to encoder count
+  uint32_t distance_enc = inches*CNT_PER_INCH;
+  uint8_t pwmCnt = 0;
+  
+  while (read_L1_quad_enc(0) < distance_enc || read_R1_quad_enc(0) < distance_enc) {
+    if (read_L1_quad_enc(0) < distance_enc && pwmCnt <= g_LeftDutyCycle) JC |= (1 << L_PWM_OFFSET);
+    else JC &= ~(1 << L_PWM_OFFSET);
+
+    if (read_R1_quad_enc(0) < distance_enc && pwmCnt <= g_RightDutyCycle) JC |= (1 << R_PWM_OFFSET);
+    else JC &= ~(1 << R_PWM_OFFSET);
+
+    if (++pwmCnt == PWM_TOP) pwmCnt = 0;
+
+    PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
+    LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
+  } 
+}
+
+void drive_straight() {
   read_L1_quad_enc(1);
   read_R1_quad_enc(1);  
   
