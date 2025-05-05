@@ -168,6 +168,7 @@ uint8_t g_LeftDutyCycle = 0x00;
 uint8_t g_RightDutyCycle = 0x00;
 float g_FrontDist = 0.00f;
 float g_LeftDist = 0.00f;
+_Bool g_NewReading = false;
 
 // Median Filtering
 static uint32_t front_buf[MED_FILT_WINDOW] = {0};
@@ -703,7 +704,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     // Dereference pointers to update both distance readings
     *(dist_1) = (uss1->med_echo_high_time)*US_PER_TICK / 58.0f;
     *(dist_2) = (uss2->med_echo_high_time)*US_PER_TICK / 58.0f;
-
+    g_NewReading = true;
     start_stopwatch(5);
     next_state = cooldown;
     break;
