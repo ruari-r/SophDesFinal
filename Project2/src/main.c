@@ -734,13 +734,6 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
         temp_buf2[i] = buf2[i];
     }
 
-    // Median filter:
-    // Take the last five readings from the uss and sort them using selection sort (from cs211)
-    // This will sort outliers (erroneously high or low readings) to the extrema
-    // taking the median ensures that we have a more consistent value
-    //
-    // For example, the burst hitting a wire and returning very quicjly could cause us to turn:
-    // With this filter, we need at least 3 measurements below the turn threshold before we believe them
     selection_sort(temp_buf1, MED_FILT_WINDOW);
     selection_sort(temp_buf2, MED_FILT_WINDOW);
 
