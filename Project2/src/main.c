@@ -1,6 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
-// #include <xil_printf.h>
+#include <xil_printf.h>
 
 #define BUTTONS (*(unsigned volatile *)0x40000000)
 #define JA (*(unsigned volatile *)0x40001000)
@@ -156,8 +156,8 @@ void drive_straight(drive_state cmd);
 void turn(uint32_t degrees);
 void read_2_uss_fsm(UltrasonicSensor * uss1, 
                     UltrasonicSensor * uss2, 
-                    float * dist_1, 
-                    float * dist_2,
+                    // float * dist_1, 
+                    // float * dist_2,
                     uint32_t buf1[MED_FILT_WINDOW],
                     uint32_t buf2[MED_FILT_WINDOW]);
 void selection_sort(uint32_t intArray[], uint8_t arrayLength);
@@ -167,8 +167,8 @@ void celebration();
 // Global Variables:
 uint8_t g_LeftDutyCycle = 0x00;
 uint8_t g_RightDutyCycle = 0x00;
-float g_FrontDist = 0.00f;
-float g_LeftDist = 0.00f;
+uint32_t g_FrontDist = 0;
+uint32_t g_LeftDist = 0;
 _Bool g_NewReading = false;
 
 // Median Filtering
@@ -189,105 +189,126 @@ int main() {
   // set up PMOD DDRs
   // 1 = Input, 0 = Output
   JA_DDR = 0x03;
-  JB_DDR |= (1<<FrontUSS.echo_offset) | (1<<LeftUSS.echo_offset);
+  JB_DDR = 0x00;
+  JB_DDR |= ((1<<FrontUSS.echo_offset) | (1<<LeftUSS.echo_offset));
   JC_DDR = 0x00;
 
   ANODES = 0x00;
-  _Bool btnU = false, btnD = false, btnL = false, btnR = false;
-  maze_state state = wait_to_start;
-  maze_state next_state;
-  maze_state last_state = wait_to_start;
-  motion_type turn_dir;
-
-  while (1) {  
-    next_state = state; // Ensure we never accidentally leave state without checking
-    btnU = UpButton_pressed();
-    btnD = DownButton_pressed();
-    btnL = LeftButton_pressed();
-    btnR = RightButton_pressed();
+  while (1) {
     g_NewReading = false; // Reset new reading flag so that it will only be high if uss fsm sets it
     read_2_uss_fsm(&FrontUSS, &LeftUSS, 
-                   &g_FrontDist, &g_LeftDist,
+                  //  &g_FrontDist, &g_LeftDist,
                    front_buf, left_buf);
-    
-    switch (state) {
-    case wait_to_start:
-      if (btnU) {
-        next_state = delay_3s;
-        start_stopwatch(6);
-      }
-      break;
-
-    case delay_3s:
-      if (read_stopwatch(6) >= HW_TIME_PER_SEC*3) {next_state = initalize_drive;}
-      break;
-      
-    case update_uss:
-      if (g_FrontDist > DIST_THRESHOLD && g_LeftDist <= DIST_THRESHOLD) {next_state = left_only;}
-      else if (g_FrontDist <= DIST_THRESHOLD && g_LeftDist <= DIST_THRESHOLD) {next_state = left_and_front;}
-      else if (g_FrontDist <= DIST_THRESHOLD && g_LeftDist > DIST_THRESHOLD) {next_state = front_only;}
-      else if (g_FrontDist > DIST_THRESHOLD && g_LeftDist > DIST_THRESHOLD) {next_state = no_left_or_front;}
-      break;
-
-    case initalize_drive:
-      set_motion_type(straight);
-      drive_straight(init_drive);
-      next_state = update_uss;
-      break;
-    
-    case left_only:
-      last_state = state;
-      drive_straight(driving);
-      if (g_NewReading) {next_state = update_uss;}
-      break;
-    
-    case left_and_front:
-      drive_straight(stop_driving);
-      set_motion_type(stop);
-      turn_dir = right;
-      if (last_state == left_and_front) {
-        next_state = win;
-        break;
-      }
-      last_state = state;
-      next_state = turn_state;
-      break;
-
-    case front_only:
-      drive_straight(stop_driving);
-      set_motion_type(stop);
-      turn_dir = left;
-      last_state = state;
-      next_state = turn_state;
-      break;
-
-    case no_left_or_front:
-      drive_straight(stop_driving);
-      set_motion_type(stop);
-      turn_dir = left;
-      last_state = state;
-      next_state = turn_state;
-      break;
-    
-    case turn_state:
-      set_motion_type(turn_dir);
-      turn(90);
-      
-      next_state = initalize_drive;
-      break;
-
-    case win:
-      set_motion_type(stop);
-      celebration();
-      if (btnD) {next_state = wait_to_start;}
-      break;
-
-    default:
-      next_state = initalize_drive;
-      break;
+    if (g_NewReading) {
+      xil_printf("Front sensor reading: %d\n",  g_FrontDist);
+      xil_printf("Left sensor reading: %d\n",  g_LeftDist);
+      while (!delay_half_sec());
     }
-    state = next_state;
   }
+  // _Bool btnU = false, btnD = false, btnL = false, btnR = false;
+  // maze_state state = wait_to_start;
+  // maze_state next_state;
+  // maze_state last_state = wait_to_start;
+  // maze_state ultrasonic_state = left_only;
+  // maze_state last_ultrasonic = left_only;
+  // motion_type turn_dir;
+
+  // while (1) {  
+  //   next_state = state; // Ensure we never accidentally leave state without checking
+  //   btnU = UpButton_pressed();
+  //   btnD = DownButton_pressed();
+  //   btnL = LeftButton_pressed();
+  //   btnR = RightButton_pressed();
+  //   g_NewReading = false; // Reset new reading flag so that it will only be high if uss fsm sets it
+  //   read_2_uss_fsm(&FrontUSS, &LeftUSS, 
+  //                  &g_FrontDist, &g_LeftDist,
+  //                  front_buf, left_buf);
+  //   float temp_fdist = g_FrontDist;
+  //   float temp_ldist = g_LeftDist;
+  //   _Bool new_data = g_NewReading;
+  //   switch (state) {
+  //   case wait_to_start:
+  //     if (btnU) {
+  //       next_state = delay_3s;
+  //       start_stopwatch(6);
+  //     }
+  //     break;
+
+  //   case delay_3s:
+  //     if (read_stopwatch(6) >= HW_TIME_PER_SEC*3) {next_state = initalize_drive;}
+  //     break;
+
+  //   case update_uss:
+  //     if (g_FrontDist > DIST_THRESHOLD && g_LeftDist <= DIST_THRESHOLD) {ultrasonic_state = left_only;}
+  //     else if (g_FrontDist <= DIST_THRESHOLD && g_LeftDist <= DIST_THRESHOLD) {ultrasonic_state = left_and_front;}
+  //     else if (g_FrontDist <= DIST_THRESHOLD && g_LeftDist > DIST_THRESHOLD) {ultrasonic_state = front_only;}
+  //     else if (g_FrontDist > DIST_THRESHOLD && g_LeftDist > DIST_THRESHOLD) {ultrasonic_state = no_left_or_front;}
+    
+  //     if (ultrasonic_state != last_ultrasonic) {
+  //       next_state = ultrasonic_state;
+  //       last_ultrasonic = ultrasonic_state;
+  //     }      
+  //     break;
+
+  //   case initalize_drive:
+  //     set_motion_type(straight);
+  //     drive_straight(init_drive);
+  //     next_state = update_uss;
+  //     break;
+    
+  //   case left_only:
+  //     last_state = state;
+  //     drive_straight(driving);
+  //     if (g_NewReading && (ultrasonic_state != last_ultrasonic)) {next_state = update_uss;}
+  //     break;
+    
+  //   case left_and_front:
+  //     drive_straight(stop_driving);
+  //     set_motion_type(stop);
+  //     turn_dir = right;
+  //     if (last_state == left_and_front) {
+  //       next_state = win;
+  //       break;
+  //     }
+  //     last_state = state;
+  //     next_state = turn_state;
+  //     break;
+
+  //   case front_only:
+  //     drive_straight(stop_driving);
+  //     set_motion_type(stop);
+  //     turn_dir = right;
+  //     last_state = state;
+  //     next_state = turn_state;
+  //     break;
+
+  //   case no_left_or_front:
+  //     drive_straight(stop_driving);
+  //     set_motion_type(stop);
+  //     turn_dir = left;
+  //     last_state = state;
+  //     next_state = turn_state;
+  //     break;
+    
+  //   case turn_state:
+  //     set_motion_type(turn_dir);
+  //     turn(90);
+      
+  //     next_state = initalize_drive;
+  //     break;
+
+  //   case win:
+  //     set_motion_type(stop);
+  //     celebration();
+  //     if (btnD) {next_state = wait_to_start;}
+  //     break;
+
+  //   default:
+  //     next_state = initalize_drive;
+  //     break;
+  //   }
+  //   state = next_state;
+  // }
 }
 
 // ###########################################################################################################
@@ -646,8 +667,8 @@ void turn(uint32_t degrees) {
 
 void read_2_uss_fsm(UltrasonicSensor * uss1, 
                     UltrasonicSensor * uss2, 
-                    float * dist_1, 
-                    float * dist_2,
+                    // float * dist_1, 
+                    // float * dist_2,
                     uint32_t buf1[MED_FILT_WINDOW],
                     uint32_t buf2[MED_FILT_WINDOW]) {
   static uss_state state = send_trig;
@@ -660,6 +681,9 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
   switch (state)
   {
   case send_trig:
+    // Ensure trig is cleared
+    clear_trig_pin(*uss1);
+    clear_trig_pin(*uss2);
     // Start the 10us pulse by setting both trig pins to high then moving state
     set_trig_pin(*uss1);
     set_trig_pin(*uss2);
@@ -670,7 +694,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
   case clear_trig:
     // Wait until 10us have passed before clearing trig
     // 10us/(1.77us/tick) gives ticks, cast converts to uint32_t, '+ 0.05f' ensures the cast rounds correcly. 
-    if (read_stopwatch(5) >= (uint32_t)(10.0f/US_PER_TICK + 0.5f)) {
+    if (read_stopwatch(5) >= 10) {
       clear_trig_pin(*uss1);
       clear_trig_pin(*uss2);
       next_state = count_echo_duration;
@@ -706,29 +730,30 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     // Timeout if distance is more than DIST_THRESHOLD
     // We don't care what the actual value is as long as we know
     // whether its +/- our threshold, so grab the current value to put into buffer
-    if (US_PER_TICK*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) {
+    if (1*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) {
       echo1_read = true;
       uss1->raw_echo_high_time = read_stopwatch(uss1->hw_timer_channel);
     }
-    if (US_PER_TICK*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) {
+    if (1*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) {
       echo2_read = true;
       uss2->raw_echo_high_time = read_stopwatch(uss2->hw_timer_channel);
     }
 
-    if (echo1_read && echo2_read) next_state = median_filter;
+    if (echo1_read && echo2_read) {next_state = median_filter;}
+
     last_echo_1 = curr_echo_1;
     last_echo_2 = curr_echo_2;
     break;
 
   case median_filter:
-  // Median filter:
-    // Take the last five readings from the uss and sort them using selection sort (from cs211)
-    // This will sort outliers (erroneously high or low readings) to the extrema
-    // taking the median ensures that we have a more consistent value
-    //
-    // For example, the burst hitting a wire and returning very quicjly could cause us to turn:
-    // With this filter, we need at least 3 measurements below the turn threshold before we believe them
-    // Add new readings to buffers
+    // Median filter:
+      // Take the last five readings from the uss and sort them using selection sort (from cs211)
+      // This will sort outliers (erroneously high or low readings) to the extrema
+      // taking the median ensures that we have a more consistent value
+      //
+      // For example, the burst hitting a wire and returning very quicjly could cause us to turn:
+      // With this filter, we need at least 3 measurements below the turn threshold before we believe them
+      // Add new readings to buffers
     buf1[buf_write_index] = uss1->raw_echo_high_time;
     buf2[buf_write_index] = uss2->raw_echo_high_time;
     if (++buf_write_index == MED_FILT_WINDOW) {buf_write_index = 0;} // Reset back to index 0 if at max
@@ -752,8 +777,8 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     // Use echo high time to calculate distance:
     //    hw_ticks*micros per ticks / 58 micros per cm = cm
     // Dereference pointers to update both distance readings
-    *(dist_1) = (uss1->med_echo_high_time)*US_PER_TICK / 58.0f;
-    *(dist_2) = (uss2->med_echo_high_time)*US_PER_TICK / 58.0f;
+    g_FrontDist = (uss1->med_echo_high_time)*1 / 58;
+    g_LeftDist = (uss2->med_echo_high_time)*1 / 58;
     g_NewReading = true;
     start_stopwatch(5);
     next_state = cooldown;
