@@ -77,6 +77,7 @@ typedef enum {
 
 typedef enum {
   wait_to_start,
+  delay_3s,
   update_uss,
   initalize_drive,
   drive,
@@ -212,11 +213,13 @@ int main() {
     switch (state) {
     case wait_to_start:
       if (btnU) {
-        next_state = initalize_drive;
+        next_state = delay_3s;
         start_stopwatch(6);
-        while (read_stopwatch(6) < HW_TIME_PER_SEC*3);
       }
       break;
+
+    case delay_3s:
+      if (read_stopwatch(6) >= HW_TIME_PER_SEC*3) {next_state = initalize_drive;}
 
     case update_uss:
       if (g_FrontDist > DIST_THRESHOLD && g_LeftDist <= DIST_THRESHOLD) {next_state = left_only;}
