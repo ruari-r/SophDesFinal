@@ -159,8 +159,8 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
                     float * dist_2,
                     uint32_t buf1[MED_FILT_WINDOW],
                     uint32_t buf2[MED_FILT_WINDOW]);
-void selection_sort(uint32_t intArray[], int arrayLength);
-static inline void swap(int * pFirst, int * pSecond);
+void selection_sort(uint32_t intArray[], uint8_t arrayLength);
+static inline void swap(uint32_t * pFirst, uint32_t * pSecond);
 void celebration();
 
 // Global Variables:
@@ -766,13 +766,13 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
   state = next_state;
 }
 
-void selection_sort(uint32_t intArray[], int arrayLength)
+void selection_sort(uint32_t intArray[], uint8_t arrayLength)
 {
-    int smallest;
+    uint32_t smallest;
 
     // Go through all array elements up to the second to last elemnt. On the last 
     // iteration, there are only two elements left in the unsorted array to compare
-    for (int currentElement = 0; currentElement < arrayLength - 1; currentElement++)
+    for (uint32_t currentElement = 0; currentElement < arrayLength - 1; currentElement++)
     {
         // For the sub-array of currentElement to the end of the array, find the
         // position of the smallest element
@@ -798,7 +798,7 @@ void selection_sort(uint32_t intArray[], int arrayLength)
     }
 }
 
-static inline void swap(int * pFirst, int * pSecond)
+static inline void swap(uint32_t * pFirst, uint32_t * pSecond)
 {
     // Store first in temp
 	int temp = *pFirst;
