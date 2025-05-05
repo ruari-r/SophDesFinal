@@ -148,7 +148,8 @@ _Bool RightButton_pressed();
 uint32_t read_L1_quad_enc(_Bool reset);
 uint32_t read_R1_quad_enc(_Bool reset);
 void set_motion_type(motion_type mode);
-void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1);
+static inline uint8_t scale_correction(int32_t raw_correction);
+static inline void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1);
 void drive_straight_distance(uint32_t inches);
 void drive_straight(drive_state cmd);
 void turn(uint32_t degrees);
@@ -510,13 +511,13 @@ void set_motion_type(motion_type mode) {
   }
 }
 
-inline uint8_t scale_correction(int32_t raw_correction) {
+static inline uint8_t scale_correction(int32_t raw_correction) {
   float raw_correction_mag = (raw_correction >= 0) ? raw_correction : -raw_correction;
   if (raw_correction_mag >= 255.00f) return 0xFF;
   else return (uint8_t) raw_correction_mag;
 }
 
-inline void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1) {
+static inline void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1) {
   static int32_t error_sum = 0, error_prev = 0;
   if (reset) {
     error_sum = 0;
