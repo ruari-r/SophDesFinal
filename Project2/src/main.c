@@ -542,11 +542,11 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
       clear_trig_pin(*uss2);
       next_state = count_echo_duration;
 
-    // Ensure flags are cleared
-    echo1_read = false;
-    echo2_read = false;
-    last_echo_1 = false;
-    last_echo_2 = false;
+      // Ensure flags are cleared
+      echo1_read = false;
+      echo2_read = false;
+      last_echo_1 = false;
+      last_echo_2 = false;
     }
     break;
 
