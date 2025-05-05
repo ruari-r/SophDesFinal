@@ -717,14 +717,23 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     break;
 
   case median_filter:
+  // Median filter:
+    // Take the last five readings from the uss and sort them using selection sort (from cs211)
+    // This will sort outliers (erroneously high or low readings) to the extrema
+    // taking the median ensures that we have a more consistent value
+    //
+    // For example, the burst hitting a wire and returning very quicjly could cause us to turn:
+    // With this filter, we need at least 3 measurements below the turn threshold before we believe them
     // Add new readings to buffers
     buf1[buf_write_index] = uss1->raw_echo_high_time;
     buf2[buf_write_index] = uss2->raw_echo_high_time;
     if (++buf_write_index == MED_FILT_WINDOW) {buf_write_index = 0;} // Reset back to index 0 if at max
 
     // Create local copies of buffers
-    memcpy(temp_buf1, buf1, sizeof(temp_buf1));
-    memcpy(temp_buf2, buf2, sizeof(temp_buf2));
+    for (int i = 0; i < MED_FILT_WINDOW; i++) {
+        temp_buf1[i] = buf1[i];
+        temp_buf2[i] = buf2[i];
+    }
 
     // Median filter:
     // Take the last five readings from the uss and sort them using selection sort (from cs211)
