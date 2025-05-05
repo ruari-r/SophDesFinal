@@ -518,7 +518,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
                     uint32_t buf1[MED_FILT_WINDOW],
                     uint32_t buf2[MED_FILT_WINDOW]) {
   static uss_state state = send_trig;
-  uss_state next_state = send_trig;
+  uss_state next_state = state;
   static _Bool last_echo_1 = false, last_echo_2 = false;
   static _Bool curr_echo_1 = false, curr_echo_2 = false;
   static _Bool echo1_read = false, echo2_read = false;
