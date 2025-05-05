@@ -78,14 +78,14 @@ typedef enum {
 
 typedef enum {
   wait_to_start,
-  initalize_drive,
   update_uss,
+  initalize_drive,
   drive,
   left_only,
   left_and_front,
   front_only,
   no_left_or_front,
-  turn,
+  turn_state,
   finished,
 } maze_state;
 
@@ -191,9 +191,53 @@ int main() {
   JC_DDR = 0x00;
 
   ANODES = 0x00;
-  
+  _Bool btnU = false, btnD = false, btnL = false, btnR = false;
+  maze_state state = wait_to_start;
+  maze_state next_state;
+  maze_state last_state;
+
   while (1) {  
-    read_2_uss_fsm(&FrontUSS, &LeftUSS, &g_FrontDist, &g_LeftDist, front_buf, left_buf);
+    btnU = UpButton_pressed();
+    btnD = DownButton_pressed();
+    btnL = LeftButton_pressed();
+    btnR = RightButton_pressed();
+    switch (state) {
+    case wait_to_start:
+      
+      break;
+    
+    case update_uss:
+
+      break;
+    
+    case initalize_drive:
+
+      break;
+    
+    case left_only:
+
+      break;
+    
+    case left_and_front:
+
+      break;
+
+    case front_only:
+
+      break;
+
+    case no_left_or_front:
+
+      break;
+    
+    case turn_state:
+
+      break;
+
+    default:
+      break;
+    }
+    state = next_state;
   }
 }
 
