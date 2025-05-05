@@ -769,11 +769,11 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
 
 void selection_sort(uint32_t intArray[], uint8_t arrayLength)
 {
-    uint32_t smallest;
+    uint8_t smallest;
 
     // Go through all array elements up to the second to last elemnt. On the last 
     // iteration, there are only two elements left in the unsorted array to compare
-    for (uint32_t currentElement = 0; currentElement < arrayLength - 1; currentElement++)
+    for (uint8_t currentElement = 0; currentElement < arrayLength - 1; currentElement++)
     {
         // For the sub-array of currentElement to the end of the array, find the
         // position of the smallest element
@@ -802,7 +802,7 @@ void selection_sort(uint32_t intArray[], uint8_t arrayLength)
 static inline void swap(uint32_t * pFirst, uint32_t * pSecond)
 {
     // Store first in temp
-	int temp = *pFirst;
+	uint32_t temp = *pFirst;
 
     // Swap
 	*pFirst = *pSecond;
