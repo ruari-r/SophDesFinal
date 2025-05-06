@@ -112,8 +112,5 @@ comp.build()
 
 vitis.dispose()
 
-platform = client.get_component(name="microblaze3")
-status = platform.build()
-
 vitis.dispose()
 
