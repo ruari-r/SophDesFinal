@@ -45,6 +45,7 @@
 #define QUAD_ENC_TOP 10000
 #define DUTY_MOTION_START 0X30
 #define DIST_THRESHOLD 13 //cm
+#define TIMEOUT_TICKS (DIST_THRESHOLD*58)
 #define CNT_PER_REV 340
 #define CNT_PER_INCH 45
 #define HW_TIME_PER_SEC 565001
@@ -675,7 +676,9 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
   uss_state next_state = state;
   static _Bool last_echo_1 = false, last_echo_2 = false;
   static _Bool curr_echo_1 = false, curr_echo_2 = false;
+  static _Bool seen_echo_1 = false, seen_echo_2 = false;
   static _Bool echo1_read = false, echo2_read = false;
+  uint32_t curr_ticks_1 = 0, curr_ticks_2 = 0;
   uint32_t temp_buf1[MED_FILT_WINDOW], temp_buf2[MED_FILT_WINDOW];
 
   switch (state)
@@ -704,6 +707,8 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
       echo2_read = false;
       last_echo_1 = false;
       last_echo_2 = false;
+      seen_echo_1 = false;
+      seen_echo_2 = false;
     }
     break;
 
@@ -712,31 +717,35 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     // read it on the falling edge.
     curr_echo_1 = read_echo_pin(*uss1);
     curr_echo_2 = read_echo_pin(*uss2);
+    if (seen_echo_1) curr_ticks_1 = read_stopwatch(uss1->hw_timer_channel);
+    if (seen_echo_2) curr_ticks_2 = read_stopwatch(uss2->hw_timer_channel);
     if (curr_echo_1 && !last_echo_1) {  // 1 echo rising edge
       start_stopwatch(uss1->hw_timer_channel);
+      seen_echo_1 = true;
     } 
     if (curr_echo_2 && !last_echo_2) {  // 2 echo rising edge
       start_stopwatch(uss2->hw_timer_channel);
+      seen_echo_2 = true;
     } 
     if (!curr_echo_1 && last_echo_1) {  // 1 falling edge
-      uss1->raw_echo_high_time = read_stopwatch(uss1->hw_timer_channel);
+      uss1->raw_echo_high_time = curr_ticks_1;
       echo1_read = true;
     }
     if (!curr_echo_2 && last_echo_2) { // 2 falling edge
-      uss2->raw_echo_high_time = read_stopwatch(uss2->hw_timer_channel);
+      uss2->raw_echo_high_time = curr_ticks_2;
       echo2_read = true;
     }
 
     // Timeout if distance is more than DIST_THRESHOLD
     // We don't care what the actual value is as long as we know
     // whether its +/- our threshold, so grab the current value to put into buffer
-    if (1*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) {
+    if ((curr_ticks_1 >= TIMEOUT_TICKS) && seen_echo_1) {
       echo1_read = true;
-      uss1->raw_echo_high_time = read_stopwatch(uss1->hw_timer_channel);
+      uss1->raw_echo_high_time = curr_ticks_1;
     }
-    if (1*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) {
+    if ((curr_ticks_2 >= TIMEOUT_TICKS) && seen_echo_2) {
       echo2_read = true;
-      uss2->raw_echo_high_time = read_stopwatch(uss2->hw_timer_channel);
+      uss2->raw_echo_high_time = curr_ticks_2;
     }
 
     if (echo1_read && echo2_read) {next_state = median_filter;}
