@@ -117,3 +117,8 @@ status = platform.build()
 
 vitis.dispose()
 
+status = platform.build()
+
+comp = client.get_component(name="Project2")
+comp.build()
+
