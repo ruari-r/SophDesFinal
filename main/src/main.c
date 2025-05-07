@@ -87,6 +87,7 @@ typedef enum {
   front_only,
   no_left_or_front,
   turn_state,
+  pause_half_sec,
   win,
 } maze_state;
 
@@ -221,6 +222,7 @@ int main() {
   maze_state ultrasonic_state = left_only;
   maze_state last_ultrasonic = left_only;
   motion_type turn_dir;
+  uint8_t pre_turn_corr;
 
   while (1) {  
     next_state = state; // Ensure we never accidentally leave state without checking
@@ -230,10 +232,10 @@ int main() {
     btnR = RightButton_pressed();
     g_NewReading = false; // Reset new reading flag so that it will only be high if uss fsm sets it
     read_2_uss_fsm(&FrontUSS, &LeftUSS, 
-                //    &g_FrontDist, &g_LeftDist,
+                //    &g_FrontDist, &g_LeftDist, 
                    front_buf, left_buf);
     if (g_NewReading) {          
-      xil_printf("Front: %5d    Left: %5d\n", g_FrontDist, g_LeftDist);          
+      // xil_printf("Front: %5d    Left: %5d\n", g_FrontDist, g_LeftDist); // Debug Prints       
       if (g_FrontDist >= DIST_THRESHOLD && g_LeftDist < DIST_THRESHOLD) {ultrasonic_state = left_only;}
       else if (g_FrontDist < DIST_THRESHOLD && g_LeftDist < DIST_THRESHOLD) {ultrasonic_state = left_and_front;}
       else if (g_FrontDist < DIST_THRESHOLD && g_LeftDist >= DIST_THRESHOLD) {ultrasonic_state = front_only;}
@@ -252,11 +254,7 @@ int main() {
       break;
 
     case update_uss:
-      // if (ultrasonic_state != last_ultrasonic) {
-        next_state = ultrasonic_state;
-        // last_ultrasonic = ultrasonic_state;
-      // }      
-      // else next_state = last_state;
+      next_state = ultrasonic_state;
       break;
 
     case initalize_drive:
@@ -300,12 +298,25 @@ int main() {
       break;
     
     case turn_state:
+      pre_turn_corr = (turn_dir == left) ? 5 : 2;      
+      set_motion_type(straight);
+      drive_straight_distance(pre_turn_corr);
+      
       set_motion_type(turn_dir);
       turn(90);
+      set_motion_type(straight);
+      drive_straight_distance(6);
       
-      next_state = initalize_drive;
+      next_state = pause_half_sec;
       break;
 
+    case pause_half_sec:
+      set_motion_type(stop);
+      if (delay_half_sec()) {
+        next_state = wait_to_start;
+      }
+      break;
+      
     case win:
       set_motion_type(stop);
       celebration();
@@ -726,12 +737,12 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     curr_echo_1 = read_echo_pin(*uss1);
     curr_echo_2 = read_echo_pin(*uss2);
     if (!echo1_read) {
-    if (seen_echo_1) curr_ticks_1 = read_stopwatch(uss1->hw_timer_channel);
-    else curr_ticks_1 = 0;
+      if (seen_echo_1) curr_ticks_1 = read_stopwatch(uss1->hw_timer_channel);
+      else curr_ticks_1 = 0;
     }
     if (!echo2_read) {
-    if (seen_echo_2) curr_ticks_2 = read_stopwatch(uss2->hw_timer_channel);
-    else curr_ticks_2 = 0;
+      if (seen_echo_2) curr_ticks_2 = read_stopwatch(uss2->hw_timer_channel);
+      else curr_ticks_2 = 0;
     }
 
     if (curr_echo_1 && !last_echo_1) {  // 1 echo rising edge
@@ -801,8 +812,8 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     // Use echo high time to calculate distance:
     //    hw_ticks*micros per ticks / 58 micros per cm = cm
     // Dereference pointers to update both distance readings
-    g_FrontDist = (uss1->med_echo_high_time)*1 / 58;
-    g_LeftDist = (uss2->med_echo_high_time)*1 / 58;
+    g_FrontDist = (uss1->med_echo_high_time) / 58;
+    g_LeftDist = (uss2->med_echo_high_time) / 58;
     g_NewReading = true;
     start_stopwatch(5);
     next_state = cooldown;
