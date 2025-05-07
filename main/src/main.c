@@ -195,17 +195,25 @@ int main() {
   JC_DDR = 0x00;
 
   ANODES = 0x00;
-//   while (1) {
-//     g_NewReading = false; // Reset new reading flag so that it will only be high if uss fsm sets it
-//     read_2_uss_fsm(&FrontUSS, &LeftUSS, 
-//                   //  &g_FrontDist, &g_LeftDist,
-//                    front_buf, left_buf);
-//     if (g_NewReading) {
-//       xil_printf("Front: %5d    Left: %5d\n", g_FrontDist, g_LeftDist);
-//     //   xil_printf("Left sensor reading: %d\n",  g_LeftDist);
-//     //   while (!delay_half_sec());
-//     }
-//   }
+  // while (1) {
+  //   g_NewReading = false; // Reset new reading flag so that it will only be high if uss fsm sets it
+  //   read_2_uss_fsm(&FrontUSS, &LeftUSS, 
+  //                 //  &g_FrontDist, &g_LeftDist,
+  //                  front_buf, left_buf);
+  //   if (g_NewReading) {
+  //     // xil_printf("Front: %5d    Left: %5d\n", g_FrontDist, g_LeftDist);
+  //   //   xil_printf("Left sensor reading: %d\n",  g_LeftDist);
+  //   //   while (!delay_half_sec());
+  //   }
+    
+  //   if (g_FrontDist < 8) {
+  //     set_motion_type(stop);
+  //   }
+  //   else if (g_LeftDist < 13) {
+  //     set_motion_type(straight);
+  //     drive_straight(driving);
+  //   }
+  // }
   _Bool btnU = false, btnD = false, btnL = false, btnR = false;
   maze_state state = wait_to_start;
   maze_state next_state;
@@ -224,11 +232,12 @@ int main() {
     read_2_uss_fsm(&FrontUSS, &LeftUSS, 
                 //    &g_FrontDist, &g_LeftDist,
                    front_buf, left_buf);
-    if (g_NewReading) {                    
-      if (g_FrontDist > DIST_THRESHOLD && g_LeftDist <= DIST_THRESHOLD) {ultrasonic_state = left_only;}
-      else if (g_FrontDist <= DIST_THRESHOLD && g_LeftDist <= DIST_THRESHOLD) {ultrasonic_state = left_and_front;}
-      else if (g_FrontDist <= DIST_THRESHOLD && g_LeftDist > DIST_THRESHOLD) {ultrasonic_state = front_only;}
-      else if (g_FrontDist > DIST_THRESHOLD && g_LeftDist > DIST_THRESHOLD) {ultrasonic_state = no_left_or_front;}
+    if (g_NewReading) {          
+      xil_printf("Front: %5d    Left: %5d\n", g_FrontDist, g_LeftDist);          
+      if (g_FrontDist >= DIST_THRESHOLD && g_LeftDist < DIST_THRESHOLD) {ultrasonic_state = left_only;}
+      else if (g_FrontDist < DIST_THRESHOLD && g_LeftDist < DIST_THRESHOLD) {ultrasonic_state = left_and_front;}
+      else if (g_FrontDist < DIST_THRESHOLD && g_LeftDist >= DIST_THRESHOLD) {ultrasonic_state = front_only;}
+      else if (g_FrontDist >= DIST_THRESHOLD && g_LeftDist >= DIST_THRESHOLD) {ultrasonic_state = no_left_or_front;}
     }
     switch (state) {
     case wait_to_start:
@@ -243,11 +252,11 @@ int main() {
       break;
 
     case update_uss:
-      if (ultrasonic_state != last_ultrasonic) {
+      // if (ultrasonic_state != last_ultrasonic) {
         next_state = ultrasonic_state;
-        last_ultrasonic = ultrasonic_state;
-      }      
-      else next_state = last_state;
+        // last_ultrasonic = ultrasonic_state;
+      // }      
+      // else next_state = last_state;
       break;
 
     case initalize_drive:
@@ -716,10 +725,14 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     // read it on the falling edge.
     curr_echo_1 = read_echo_pin(*uss1);
     curr_echo_2 = read_echo_pin(*uss2);
+    if (!echo1_read) {
     if (seen_echo_1) curr_ticks_1 = read_stopwatch(uss1->hw_timer_channel);
     else curr_ticks_1 = 0;
+    }
+    if (!echo2_read) {
     if (seen_echo_2) curr_ticks_2 = read_stopwatch(uss2->hw_timer_channel);
     else curr_ticks_2 = 0;
+    }
 
     if (curr_echo_1 && !last_echo_1) {  // 1 echo rising edge
       start_stopwatch(uss1->hw_timer_channel);
