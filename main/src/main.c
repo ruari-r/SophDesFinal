@@ -46,6 +46,8 @@
 #define DUTY_MOTION_START 0X30
 #define DIST_THRESHOLD 13 //cm
 #define TIMEOUT_TICKS (DIST_THRESHOLD*58)
+#define PRE_TURN_CORR 7 //inches
+#define POST_TURN_CORR 8 //inches
 #define CNT_PER_REV 340
 #define CNT_PER_INCH 45
 #define HW_TIME_PER_SEC 565001
@@ -250,7 +252,7 @@ int main() {
       break;
 
     case delay_3s:
-      if (read_stopwatch(6) >= 3000000) {next_state = initalize_drive;}
+      if (read_stopwatch(6) >= 3000000) {next_state = initialize_drive;}
       break;
 
     case update_uss:
@@ -298,20 +300,20 @@ int main() {
       break;
     
     case turn_state:
-      pre_turn_corr = (turn_dir == left) ? 5 : 2;      
+      pre_turn_corr = (turn_dir == left) ? PRE_TURN_CORR : 0;
       set_motion_type(straight);
       drive_straight_distance(pre_turn_corr);
       
       set_motion_type(turn_dir);
       turn(90);
       set_motion_type(straight);
-      drive_straight_distance(6);
+      drive_straight_distance(POST_TURN_CORR);
       
       next_state = pause_half_sec;
       break;
 
     case pause_half_sec:
-      set_motion_type(stop);
+      // set_motion_type(stop);
       if (delay_half_sec()) {
         next_state = initialize_drive;
       }
@@ -324,7 +326,7 @@ int main() {
       break;
 
     default:
-      next_state = initalize_drive;
+      next_state = initialize_drive;
       break;
     }
     state = next_state;
@@ -656,7 +658,7 @@ void drive_straight(drive_state cmd) {
 }
 
 void turn(uint32_t degrees) {   
-    PID_Controller(true, 0, 0);
+    // PID_Controller(true, 0, 0);
     read_L1_quad_enc(1);
     read_R1_quad_enc(1);
 
@@ -680,7 +682,7 @@ void turn(uint32_t degrees) {
 
         if (++pwmCnt == PWM_TOP) pwmCnt = 0;
 
-        PID_Controller(false, read_L1_quad_enc(0), read_R1_quad_enc(0));
+        // PID_Controller(false, read_L1_quad_enc(0), read_R1_quad_enc(0));
         LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
     }
 }
