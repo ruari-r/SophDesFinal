@@ -1,0 +1,6 @@
+create libxil.a
+addlib C:/Users/rlran/SophDes_Final/Project2/microblaze/microblaze_0/standalone_microblaze_0/bsp/libsrc/build_configs/gen_bsp/libsrc/uartlite/src/libuartlite.a
+addlib C:/Users/rlran/SophDes_Final/Project2/microblaze/microblaze_0/standalone_microblaze_0/bsp/libsrc/build_configs/gen_bsp/libsrc/tmrctr/src/libtmrctr.a
+addlib C:/Users/rlran/SophDes_Final/Project2/microblaze/microblaze_0/standalone_microblaze_0/bsp/libsrc/build_configs/gen_bsp/libsrc/gpio/src/libgpio.a
+save
+end
