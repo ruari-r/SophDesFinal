@@ -80,7 +80,7 @@ typedef enum {
   wait_to_start,
   delay_3s,
   update_uss,
-  initalize_drive,
+  initialize_drive,
   drive,
   left_only,
   left_and_front,
@@ -257,7 +257,7 @@ int main() {
       next_state = ultrasonic_state;
       break;
 
-    case initalize_drive:
+    case initialize_drive:
       set_motion_type(straight);
       drive_straight(init_drive);
       next_state = update_uss;
@@ -313,7 +313,7 @@ int main() {
     case pause_half_sec:
       set_motion_type(stop);
       if (delay_half_sec()) {
-        next_state = wait_to_start;
+        next_state = initialize_drive;
       }
       break;
       
