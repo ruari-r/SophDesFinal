@@ -47,7 +47,7 @@
 #define DIST_THRESHOLD 13 //cm
 #define TIMEOUT_TICKS (DIST_THRESHOLD*58)
 #define PRE_TURN_CORR 7 //inches
-#define POST_TURN_CORR 8 //inches
+#define POST_TURN_CORR 10 //inches
 #define CNT_PER_REV 340
 #define CNT_PER_INCH 45
 #define HW_TIME_PER_SEC 565001
@@ -220,11 +220,12 @@ int main() {
   _Bool btnU = false, btnD = false, btnL = false, btnR = false;
   maze_state state = wait_to_start;
   maze_state next_state;
-  maze_state last_state = wait_to_start;
+//   maze_state last_state = wait_to_start;
   maze_state ultrasonic_state = left_only;
   maze_state last_ultrasonic = left_only;
   motion_type turn_dir;
   uint8_t pre_turn_corr;
+  uint8_t win_check = 0;
 
   while (1) {  
     next_state = state; // Ensure we never accidentally leave state without checking
@@ -257,6 +258,7 @@ int main() {
 
     case update_uss:
       next_state = ultrasonic_state;
+      last_ultrasonic = ultrasonic_state;
       break;
 
     case initialize_drive:
@@ -266,36 +268,36 @@ int main() {
       break;
     
     case left_only:
-      last_state = state;
+    //   last_state = state;
+      win_check = 0;
       drive_straight(driving);
       if (g_NewReading && (ultrasonic_state != last_ultrasonic)) {next_state = update_uss;}
       break;
     
     case left_and_front:
+      win_check++;
       drive_straight(stop_driving);
       set_motion_type(stop);
       turn_dir = right;
-      if (last_state == left_and_front) {
-        next_state = win;
-        break;
-      }
-      last_state = state;
+    //   last_state = state;
       next_state = turn_state;
       break;
 
     case front_only:
+      win_check = 0;
       drive_straight(stop_driving);
       set_motion_type(stop);
       turn_dir = right;
-      last_state = state;
+    //   last_state = state;
       next_state = turn_state;
       break;
 
     case no_left_or_front:
+      win_check = 0;
       drive_straight(stop_driving);
       set_motion_type(stop);
       turn_dir = left;
-      last_state = state;
+    //   last_state = state;
       next_state = turn_state;
       break;
     
@@ -306,15 +308,18 @@ int main() {
       
       set_motion_type(turn_dir);
       turn(90);
-      set_motion_type(straight);
-      drive_straight_distance(POST_TURN_CORR);
-      
+      if (turn_dir == left) {
+        set_motion_type(straight);
+        drive_straight_distance(POST_TURN_CORR);
+      }
+
+      start_stopwatch(6);
       next_state = pause_half_sec;
       break;
 
     case pause_half_sec:
-      // set_motion_type(stop);
-      if (delay_half_sec()) {
+      set_motion_type(stop);
+      if (read_stopwatch(6) >= 500000) {
         next_state = initialize_drive;
       }
       break;
@@ -322,12 +327,18 @@ int main() {
     case win:
       set_motion_type(stop);
       celebration();
-      if (btnD) {next_state = wait_to_start;}
+      if (btnD) {
+        win_check = 0;
+        next_state = wait_to_start;
+      }
       break;
 
     default:
       next_state = initialize_drive;
       break;
+    }
+    if (win_check == 2) {
+      next_state = win;
     }
     state = next_state;
   }
