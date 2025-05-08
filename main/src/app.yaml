@@ -1,0 +1,4 @@
+domain_path: C:\Users\rlran\SophDes_Final\Project2\microblaze\export\microblaze\sw\standalone_microblaze_0
+app_src_dir: C:\Users\rlran\OneDrive\Documents\Vitis\2024.2\data\embeddedsw\lib\sw_apps\empty_application
+template: empty_application
+lang: c

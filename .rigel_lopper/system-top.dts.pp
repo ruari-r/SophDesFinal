@@ -1,9 +1,9 @@
-# 0 "C:\\Users\\rlran\\SophDes_Final\\Project2\\microblaze3\\hw\\sdt\\system-top.dts"
+# 0 "C:\\Users\\rlran\\SophDes_Final\\Project2\\microblaze\\hw\\sdt\\system-top.dts"
 # 0 "<built-in>"
 # 0 "<command-line>"
-# 1 "C:\\Users\\rlran\\SophDes_Final\\Project2\\microblaze3\\hw\\sdt\\system-top.dts"
+# 1 "C:\\Users\\rlran\\SophDes_Final\\Project2\\microblaze\\hw\\sdt\\system-top.dts"
 /dts-v1/;
-# 1 "C:\\Users\\rlran\\SophDes_Final\\Project2\\microblaze3\\hw\\sdt\\pl.dtsi" 1
+# 1 "C:\\Users\\rlran\\SophDes_Final\\Project2\\microblaze\\hw\\sdt\\pl.dtsi" 1
 / {
  cpus_microblaze_0: cpus_microblaze@0 {
   #cpu-mask-cells = <1>;
@@ -558,7 +558,7 @@
   };
  };
 };
-# 3 "C:\\Users\\rlran\\SophDes_Final\\Project2\\microblaze3\\hw\\sdt\\system-top.dts" 2
+# 3 "C:\\Users\\rlran\\SophDes_Final\\Project2\\microblaze\\hw\\sdt\\system-top.dts" 2
 / {
  device_id = "7a35t";
  #address-cells = <1>;
