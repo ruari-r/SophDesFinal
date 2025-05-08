@@ -1,7 +1,5 @@
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
-// #include <xil_printf.h>
 
 #define BUTTONS (*(unsigned volatile *)0x40000000)
 #define JA (*(unsigned volatile *)0x40001000)
@@ -45,7 +43,10 @@
 #define INCREMENT 8
 #define QUAD_ENC_TOP 10000
 #define DUTY_MOTION_START 0X30
-#define DIST_THRESHOLD 5 //cm
+#define DIST_THRESHOLD 13 //cm
+#define TIMEOUT_TICKS (DIST_THRESHOLD*58)
+#define PRE_TURN_CORR 7 //inches
+#define POST_TURN_CORR 10 //inches
 #define CNT_PER_REV 340
 #define CNT_PER_INCH 45
 #define HW_TIME_PER_SEC 565001
@@ -77,8 +78,25 @@ typedef enum {
 } motion_type;
 
 typedef enum {
-  wait_to_start
-} state_type;
+  wait_to_start,
+  delay_3s,
+  update_uss,
+  initialize_drive,
+  drive,
+  left_only,
+  left_and_front,
+  front_only,
+  no_left_or_front,
+  turn_state,
+  pause_half_sec,
+  win,
+} maze_state;
+
+typedef enum {
+  init_drive,
+  driving,
+  stop_driving
+} drive_state;
 
 typedef enum {
   send_trig,  
@@ -117,9 +135,9 @@ _Bool delay_1s();
 _Bool delay_5s();
 _Bool delay_half_sec();
 void timer_2us(unsigned t);
-void set_trig_pin(UltrasonicSensor uss);
-void clear_trig_pin(UltrasonicSensor uss);
-_Bool read_echo_pin(UltrasonicSensor uss);
+static inline void set_trig_pin(UltrasonicSensor uss);
+static inline void clear_trig_pin(UltrasonicSensor uss);
+static inline _Bool read_echo_pin(UltrasonicSensor uss);
 void restart_timer0();
 uint32_t get_timer0_value_us();
 uint32_t *convert_timer_to_hex_address(uint8_t timer_number);
@@ -134,34 +152,36 @@ _Bool RightButton_pressed();
 uint32_t read_L1_quad_enc(_Bool reset);
 uint32_t read_R1_quad_enc(_Bool reset);
 void set_motion_type(motion_type mode);
-void PID_Controller(uint32_t L1, uint32_t R1);
+static inline uint8_t scale_correction(int32_t raw_correction);
+void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1);
 void drive_straight_distance(uint32_t inches);
-void drive_straight();
-void turn(uint32_t degrees, uint16_t coords);
+void drive_straight(drive_state cmd);
+void turn(uint32_t degrees);
 void read_2_uss_fsm(UltrasonicSensor * uss1, 
                     UltrasonicSensor * uss2, 
-                    float * dist_1, 
-                    float * dist_2,
+                    // float * dist_1, 
+                    // float * dist_2,
                     uint32_t buf1[MED_FILT_WINDOW],
                     uint32_t buf2[MED_FILT_WINDOW]);
-void selection_sort(int intArray[], int arrayLength);
-static inline void swap(int * pFirst, int * pSecond);
+void selection_sort(uint32_t intArray[], uint8_t arrayLength);
+static inline void swap(uint32_t * pFirst, uint32_t * pSecond);
 void celebration();
 
 // Global Variables:
 uint8_t g_LeftDutyCycle = 0x00;
 uint8_t g_RightDutyCycle = 0x00;
-float g_FrontDist = 0.00f;
-float g_LeftDist = 0.00f;
+uint32_t g_FrontDist = 0;
+uint32_t g_LeftDist = 0;
+_Bool g_NewReading = false;
 
 // Median Filtering
-static uint32_t front_buf[MED_FILT_WINDOW] = {0};
-static uint32_t left_buf[MED_FILT_WINDOW] = {0};
+static uint32_t front_buf[MED_FILT_WINDOW] = {14, 14, 14, 14, 14};
+static uint32_t left_buf[MED_FILT_WINDOW] = {14, 14, 14, 14, 14};
 uint8_t buf_write_index = 0; // Used for both front and left, updated simultaneously
 
 // Initialize Ultrasonic Sensors
-UltrasonicSensor FrontUSS = {0, 3, 3};
-UltrasonicSensor LeftUSS = {1, 2, 4};
+UltrasonicSensor FrontUSS = {0, 3, 3, 0, 0};
+UltrasonicSensor LeftUSS = {1, 2, 4, 0, 0};
 
 // ###########################################################################################################
 
@@ -172,13 +192,128 @@ int main() {
   // set up PMOD DDRs
   // 1 = Input, 0 = Output
   JA_DDR = 0x03;
-  JB_DDR |= (1<<FrontUSS.echo_offset) | (1<<LeftUSS.echo_offset);
+  JB_DDR = 0x00;
+  JB_DDR |= ((1<<FrontUSS.echo_offset) | (1<<LeftUSS.echo_offset));
   JC_DDR = 0x00;
 
   ANODES = 0x00;
-  
+  _Bool btnU = false, btnD = false, btnL = false, btnR = false;
+  maze_state state = wait_to_start;
+  maze_state next_state;
+  maze_state ultrasonic_state = left_only;
+  maze_state last_ultrasonic = left_only;
+  motion_type turn_dir;
+  uint8_t pre_turn_corr;
+  uint8_t win_check = 0;
+
   while (1) {  
-    read_2_uss_fsm(&FrontUSS, &LeftUSS, &g_FrontDist, &g_LeftDist, front_buf, left_buf);
+    next_state = state; // Ensure we never accidentally leave state without checking
+    btnU = UpButton_pressed();
+    btnD = DownButton_pressed();
+    btnL = LeftButton_pressed();
+    btnR = RightButton_pressed();
+    g_NewReading = false; // Reset new reading flag so that it will only be high if uss fsm sets it
+    read_2_uss_fsm(&FrontUSS, &LeftUSS, 
+                   front_buf, left_buf);
+    if (g_NewReading) {          
+      if (g_FrontDist >= DIST_THRESHOLD && g_LeftDist < DIST_THRESHOLD) {ultrasonic_state = left_only;}
+      else if (g_FrontDist < DIST_THRESHOLD && g_LeftDist < DIST_THRESHOLD) {ultrasonic_state = left_and_front;}
+      else if (g_FrontDist < DIST_THRESHOLD && g_LeftDist >= DIST_THRESHOLD) {ultrasonic_state = front_only;}
+      else if (g_FrontDist >= DIST_THRESHOLD && g_LeftDist >= DIST_THRESHOLD) {ultrasonic_state = no_left_or_front;}
+    }
+    switch (state) {
+    case wait_to_start:
+      if (btnU) {
+        next_state = delay_3s;
+        start_stopwatch(6);
+      }
+      break;
+
+    case delay_3s:
+      if (read_stopwatch(6) >= 3000000) {next_state = initialize_drive;}
+      break;
+
+    case update_uss:
+      next_state = ultrasonic_state;
+      last_ultrasonic = ultrasonic_state;
+      break;
+
+    case initialize_drive:
+      set_motion_type(straight);
+      drive_straight(init_drive);
+      next_state = update_uss;
+      break;
+    
+    case left_only:
+      win_check = 0;
+      drive_straight(driving);
+      if (g_NewReading && (ultrasonic_state != last_ultrasonic)) {next_state = update_uss;}
+      break;
+    
+    case left_and_front:
+      win_check++;
+      drive_straight(stop_driving);
+      set_motion_type(stop);
+      turn_dir = right;
+      next_state = turn_state;
+      break;
+
+    case front_only:
+      win_check = 0;
+      drive_straight(stop_driving);
+      set_motion_type(stop);
+      turn_dir = right;
+      next_state = turn_state;
+      break;
+
+    case no_left_or_front:
+      win_check = 0;
+      drive_straight(stop_driving);
+      set_motion_type(stop);
+      turn_dir = left;
+      next_state = turn_state;
+      break;
+    
+    case turn_state:
+      pre_turn_corr = (turn_dir == left) ? PRE_TURN_CORR : 0;
+      set_motion_type(straight);
+      drive_straight_distance(pre_turn_corr);
+      
+      set_motion_type(turn_dir);
+      turn(90);
+      if (turn_dir == left) {
+        set_motion_type(straight);
+        drive_straight_distance(POST_TURN_CORR);
+      }
+
+      start_stopwatch(6);
+      next_state = pause_half_sec;
+      break;
+
+    case pause_half_sec:
+      set_motion_type(stop);
+      if (read_stopwatch(6) >= 500000) {
+        next_state = initialize_drive;
+      }
+      break;
+      
+    case win:
+      set_motion_type(stop);
+      celebration();
+      if (btnD) {
+        win_check = 0;
+        next_state = wait_to_start;
+      }
+      break;
+
+    default:
+      next_state = initialize_drive;
+      break;
+    }
+    if (win_check == 2) {
+      next_state = win;
+    }
+    state = next_state;
   }
 }
 
@@ -191,15 +326,15 @@ void init_program() {
 }
 
 // Functions for the Ultrasonic Sensor
-void set_trig_pin(UltrasonicSensor uss) {
+static inline void set_trig_pin(UltrasonicSensor uss) {
   JB |= (1<<uss.trig_offset); // set trig pin
 }
 
-void clear_trig_pin(UltrasonicSensor uss) {
+static inline void clear_trig_pin(UltrasonicSensor uss) {
   JB &= ~(1<<uss.trig_offset); // clear trig pin
 }
 
-_Bool read_echo_pin(UltrasonicSensor uss) {
+static inline _Bool read_echo_pin(UltrasonicSensor uss) {
   bool echo = JB & (1<<uss.echo_offset); // Read echo signal from pin
   return echo;           // return echo pin value
 }
@@ -407,14 +542,18 @@ void set_motion_type(motion_type mode) {
   }
 }
 
-uint8_t scale_correction(int32_t raw_correction) {
+static inline uint8_t scale_correction(int32_t raw_correction) {
   float raw_correction_mag = (raw_correction >= 0) ? raw_correction : -raw_correction;
-  if (raw_correction >= 255.00f) return 0xFF;
+  if (raw_correction_mag >= 255.00f) return 0xFF;
   else return (uint8_t) raw_correction_mag;
 }
 
-void PID_Controller(uint32_t L1, uint32_t R1) {
+void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1) {
   static int32_t error_sum = 0, error_prev = 0;
+  if (reset) {
+    error_sum = 0;
+    error_prev = 0;
+  }
   int32_t error = (int32_t)L1 - (int32_t)R1;
   error_sum += error;
 	
@@ -424,34 +563,18 @@ void PID_Controller(uint32_t L1, uint32_t R1) {
   uint8_t correction_scaled = scale_correction(correction);
 
   if (error > 0) {
-    if (g_RightDutyCycle + correction_scaled > 0xFF) {
-      g_RightDutyCycle = 0xFF;
-    }
-    else {
-      g_RightDutyCycle += correction_scaled;
-    }
+    if (g_RightDutyCycle + correction_scaled > 0xFF) {g_RightDutyCycle = 0xFF;}
+    else {g_RightDutyCycle += correction_scaled;}
 
-	if (g_LeftDutyCycle - correction_scaled < 0xA0) {
-      g_LeftDutyCycle = 0xA0;
-    }
-	else {
-      g_LeftDutyCycle -= correction_scaled;
-    }
+    if (g_LeftDutyCycle - correction_scaled < 0xA0) {g_LeftDutyCycle = 0xA0;}
+    else {g_LeftDutyCycle -= correction_scaled;}
   } 
   else if (error < 0) { 
-    if (g_LeftDutyCycle + correction_scaled > 0xFF) {
-      g_LeftDutyCycle = 0xFF;
-    }
-    else {
-      g_LeftDutyCycle += correction_scaled;
-    }
+    if (g_LeftDutyCycle + correction_scaled > 0xFF) {g_LeftDutyCycle = 0xFF;}
+    else {g_LeftDutyCycle += correction_scaled;}
 
-	if (g_RightDutyCycle - correction_scaled < 0xA0) {
-      g_RightDutyCycle = 0xA0;
-    }
-	else {
-      g_RightDutyCycle -= correction_scaled;
-    }
+    if (g_RightDutyCycle - correction_scaled < 0xA0) {g_RightDutyCycle = 0xA0;}
+    else {g_RightDutyCycle -= correction_scaled;}
   }
 	
 	error_prev = error;
@@ -459,6 +582,7 @@ void PID_Controller(uint32_t L1, uint32_t R1) {
 
 // Functions for navigation
 void drive_straight_distance(uint32_t inches) {
+  PID_Controller(true, 0, 0);
   read_L1_quad_enc(1);
   read_R1_quad_enc(1);  
   
@@ -478,31 +602,47 @@ void drive_straight_distance(uint32_t inches) {
 
     if (++pwmCnt == PWM_TOP) pwmCnt = 0;
 
-    PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
+    PID_Controller(false, read_L1_quad_enc(0), read_R1_quad_enc(0));
     LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
   } 
 }
 
-void drive_straight() {
-  g_LeftDutyCycle = 0xCF;
-  g_RightDutyCycle = 0xCF;
-
+void drive_straight(drive_state cmd) {
   static uint8_t pwmCnt = 0;
+  uint32_t L1, R1;
+  switch (cmd) {
+    case init_drive:
+      // Reset variables and states for driving
+      L1 = read_L1_quad_enc(1);
+      R1 = read_R1_quad_enc(1);
+      PID_Controller(true, L1, R1); // 1 is rst, 0s to not start with imaginary error
+      pwmCnt = 0;
+      g_LeftDutyCycle = 0xCF;
+      g_RightDutyCycle = 0xCF;
+      break;
 
+    case driving:
+      if (pwmCnt <= g_LeftDutyCycle) {JC |= (1 << L_PWM_OFFSET);}
+      else {JC &= ~(1 << L_PWM_OFFSET);}
+    
+      if (pwmCnt <= g_RightDutyCycle) {JC |= (1 << R_PWM_OFFSET);}
+      else {JC &= ~(1 << R_PWM_OFFSET);}
+    
+      if (++pwmCnt == PWM_TOP) {pwmCnt = 0;}
+      PID_Controller(0, read_L1_quad_enc(0), read_R1_quad_enc(0));
+      break;
+
+    case stop_driving:
+      g_LeftDutyCycle = 0;
+      g_RightDutyCycle = 0;
+      JC &= ~(1 << L_PWM_OFFSET);
+      JC &= ~(1 << R_PWM_OFFSET);
+  }
   
-  if (pwmCnt <= g_LeftDutyCycle) {JC |= (1 << L_PWM_OFFSET);}
-  else {JC &= ~(1 << L_PWM_OFFSET);}
-
-  if (pwmCnt <= g_RightDutyCycle) {JC |= (1 << R_PWM_OFFSET);}
-  else {JC &= ~(1 << R_PWM_OFFSET);}
-
-  if (++pwmCnt == PWM_TOP) {pwmCnt = 0;}
-
-  PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
-  LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
 }
 
-void turn(uint32_t degrees, uint16_t coords) {   
+void turn(uint32_t degrees) {   
+    // PID_Controller(true, 0, 0);
     read_L1_quad_enc(1);
     read_R1_quad_enc(1);
 
@@ -526,27 +666,32 @@ void turn(uint32_t degrees, uint16_t coords) {
 
         if (++pwmCnt == PWM_TOP) pwmCnt = 0;
 
-        PID_Controller(read_L1_quad_enc(0), read_R1_quad_enc(0));
+        // PID_Controller(false, read_L1_quad_enc(0), read_R1_quad_enc(0));
         LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
     }
 }
 
 void read_2_uss_fsm(UltrasonicSensor * uss1, 
                     UltrasonicSensor * uss2, 
-                    float * dist_1, 
-                    float * dist_2,
+                    // float * dist_1, 
+                    // float * dist_2,
                     uint32_t buf1[MED_FILT_WINDOW],
                     uint32_t buf2[MED_FILT_WINDOW]) {
   static uss_state state = send_trig;
   uss_state next_state = state;
   static _Bool last_echo_1 = false, last_echo_2 = false;
   static _Bool curr_echo_1 = false, curr_echo_2 = false;
+  static _Bool seen_echo_1 = false, seen_echo_2 = false;
   static _Bool echo1_read = false, echo2_read = false;
+  uint32_t curr_ticks_1 = 0, curr_ticks_2 = 0;
   uint32_t temp_buf1[MED_FILT_WINDOW], temp_buf2[MED_FILT_WINDOW];
 
   switch (state)
   {
   case send_trig:
+    // Ensure trig is cleared
+    clear_trig_pin(*uss1);
+    clear_trig_pin(*uss2);
     // Start the 10us pulse by setting both trig pins to high then moving state
     set_trig_pin(*uss1);
     set_trig_pin(*uss2);
@@ -556,8 +701,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
 
   case clear_trig:
     // Wait until 10us have passed before clearing trig
-    // 10us/(1.77us/tick) gives ticks, cast converts to uint32_t, '+ 0.05f' ensures the cast rounds correcly. 
-    if (read_stopwatch(5) >= (uint32_t)(10.0f/US_PER_TICK + 0.5f)) {
+    if (read_stopwatch(5) >= 10) {
       clear_trig_pin(*uss1);
       clear_trig_pin(*uss2);
       next_state = count_echo_duration;
@@ -567,6 +711,8 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
       echo2_read = false;
       last_echo_1 = false;
       last_echo_2 = false;
+      seen_echo_1 = false;
+      seen_echo_2 = false;
     }
     break;
 
@@ -575,55 +721,69 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
     // read it on the falling edge.
     curr_echo_1 = read_echo_pin(*uss1);
     curr_echo_2 = read_echo_pin(*uss2);
+    if (!echo1_read) {
+      if (seen_echo_1) curr_ticks_1 = read_stopwatch(uss1->hw_timer_channel);
+      else curr_ticks_1 = 0;
+    }
+    if (!echo2_read) {
+      if (seen_echo_2) curr_ticks_2 = read_stopwatch(uss2->hw_timer_channel);
+      else curr_ticks_2 = 0;
+    }
+
     if (curr_echo_1 && !last_echo_1) {  // 1 echo rising edge
       start_stopwatch(uss1->hw_timer_channel);
+      seen_echo_1 = true;
     } 
     if (curr_echo_2 && !last_echo_2) {  // 2 echo rising edge
       start_stopwatch(uss2->hw_timer_channel);
+      seen_echo_2 = true;
     } 
     if (!curr_echo_1 && last_echo_1) {  // 1 falling edge
-      uss1->raw_echo_high_time = read_stopwatch(uss1->hw_timer_channel);
+      uss1->raw_echo_high_time = curr_ticks_1;
       echo1_read = true;
     }
     if (!curr_echo_2 && last_echo_2) { // 2 falling edge
-      uss2->raw_echo_high_time = read_stopwatch(uss2->hw_timer_channel);
+      uss2->raw_echo_high_time = curr_ticks_2;
       echo2_read = true;
     }
 
     // Timeout if distance is more than DIST_THRESHOLD
     // We don't care what the actual value is as long as we know
     // whether its +/- our threshold, so grab the current value to put into buffer
-    if (US_PER_TICK*read_stopwatch(uss1->hw_timer_channel)/58 >= DIST_THRESHOLD) {
+    if ((curr_ticks_1 >= TIMEOUT_TICKS) && seen_echo_1) {
       echo1_read = true;
-      uss1->raw_echo_high_time = read_stopwatch(uss1->hw_timer_channel);
+      uss1->raw_echo_high_time = curr_ticks_1;
     }
-    if (US_PER_TICK*read_stopwatch(uss2->hw_timer_channel)/58 >= DIST_THRESHOLD) {
+    if ((curr_ticks_2 >= TIMEOUT_TICKS) && seen_echo_2) {
       echo2_read = true;
-      uss2->raw_echo_high_time = read_stopwatch(uss2->hw_timer_channel);
+      uss2->raw_echo_high_time = curr_ticks_2;
     }
 
-    if (echo1_read && echo2_read) next_state = median_filter;
+    if (echo1_read && echo2_read) {next_state = median_filter;}
+
     last_echo_1 = curr_echo_1;
     last_echo_2 = curr_echo_2;
     break;
 
   case median_filter:
-    // Add new readings to buffers
+    // Median filter:
+      // Take the last five readings from the uss and sort them using selection sort (from cs211)
+      // This will sort outliers (erroneously high or low readings) to the extrema
+      // taking the median ensures that we have a more consistent value
+      //
+      // For example, the burst hitting a wire and returning very quicjly could cause us to turn:
+      // With this filter, we need at least 3 measurements below the turn threshold before we believe them
+      // Add new readings to buffers
     buf1[buf_write_index] = uss1->raw_echo_high_time;
     buf2[buf_write_index] = uss2->raw_echo_high_time;
     if (++buf_write_index == MED_FILT_WINDOW) {buf_write_index = 0;} // Reset back to index 0 if at max
 
     // Create local copies of buffers
-    memcpy(temp_buf1, buf1, sizeof(temp_buf1));
-    memcpy(temp_buf2, buf2, sizeof(temp_buf2));
+    for (int i = 0; i < MED_FILT_WINDOW; i++) {
+        temp_buf1[i] = buf1[i];
+        temp_buf2[i] = buf2[i];
+    }
 
-    // Median filter:
-    // Take the last five readings from the uss and sort them using selection sort (from cs211)
-    // This will sort outliers (erroneously high or low readings) to the extrema
-    // taking the median ensures that we have a more consistent value
-    //
-    // For example, the burst hitting a wire and returning very quicjly could cause us to turn:
-    // With this filter, we need at least 3 measurements below the turn threshold before we believe them
     selection_sort(temp_buf1, MED_FILT_WINDOW);
     selection_sort(temp_buf2, MED_FILT_WINDOW);
 
@@ -635,11 +795,11 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
 
   case calculate_distance:
     // Use echo high time to calculate distance:
-    //    hw_ticks*micros per ticks / 58 micros per cm = cm
+    //    hw_ticks(micros) / 58 micros per cm = cm
     // Dereference pointers to update both distance readings
-    *(dist_1) = (uss1->med_echo_high_time)*US_PER_TICK / 58.0f;
-    *(dist_2) = (uss2->med_echo_high_time)*US_PER_TICK / 58.0f;
-
+    g_FrontDist = (uss1->med_echo_high_time) / 58;
+    g_LeftDist = (uss2->med_echo_high_time) / 58;
+    g_NewReading = true;
     start_stopwatch(5);
     next_state = cooldown;
     break;
@@ -657,13 +817,13 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
   state = next_state;
 }
 
-void selection_sort(int intArray[], int arrayLength)
+void selection_sort(uint32_t intArray[], uint8_t arrayLength)
 {
-    int smallest;
+    uint8_t smallest;
 
     // Go through all array elements up to the second to last elemnt. On the last 
     // iteration, there are only two elements left in the unsorted array to compare
-    for (int currentElement = 0; currentElement < arrayLength - 1; currentElement++)
+    for (uint8_t currentElement = 0; currentElement < arrayLength - 1; currentElement++)
     {
         // For the sub-array of currentElement to the end of the array, find the
         // position of the smallest element
@@ -689,10 +849,10 @@ void selection_sort(int intArray[], int arrayLength)
     }
 }
 
-static inline void swap(int * pFirst, int * pSecond)
+static inline void swap(uint32_t * pFirst, uint32_t * pSecond)
 {
     // Store first in temp
-	int temp = *pFirst;
+	uint32_t temp = *pFirst;
 
     // Swap
 	*pFirst = *pSecond;
