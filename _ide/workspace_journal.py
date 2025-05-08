@@ -8,3 +8,11 @@ platform = client.create_platform_component(name = "microblaze3",hw_design = "$C
 
 comp = client.create_app_component(name="Project2",platform = "$COMPONENT_LOCATION/../microblaze3/export/microblaze3/microblaze3.xpfm",domain = "standalone_microblaze_0")
 
+platform = client.get_component(name="microblaze3")
+status = platform.build()
+
+status = platform.build()
+
+comp = client.get_component(name="Project2")
+comp.build()
+

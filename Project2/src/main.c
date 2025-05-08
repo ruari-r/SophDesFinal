@@ -54,9 +54,13 @@
 #define USS_READ_INTERVAL 0.060f // 60ms delay (4m max range)
 #define MED_FILT_WINDOW 5
 #define BASE_DUTY_CYCLE 0xBF
-#define KP 0.1
-#define KI 0.05
-#define KD 0
+#define KP_enc 0.1
+#define KI_enc 0.05
+#define KD_enc 0
+#define KP_drift 0.1
+#define KI_drift 0.05
+#define KD_drift 0
+#define LEFT_DIST_SETPOINT 6 //cm
 #define PI 3.141592653589793
 #define ITP (uint32_t *)
 
@@ -153,7 +157,8 @@ uint32_t read_L1_quad_enc(_Bool reset);
 uint32_t read_R1_quad_enc(_Bool reset);
 void set_motion_type(motion_type mode);
 static inline uint8_t scale_correction(int32_t raw_correction);
-void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1);
+void PID_Controller_enc(_Bool reset, uint32_t L1, uint32_t R1);
+void PID_Controller_drift(_Bool reset);
 void drive_straight_distance(uint32_t inches);
 void drive_straight(drive_state cmd);
 void turn(uint32_t degrees);
@@ -246,8 +251,13 @@ int main() {
     
     case left_only:
       win_check = 0;
+      if (g_NewReading) {
+        if (ultrasonic_state != last_ultrasonic) {next_state = update_uss;}
+        else {PID_Controller_drift(0);}
+      }
+
       drive_straight(driving);
-      if (g_NewReading && (ultrasonic_state != last_ultrasonic)) {next_state = update_uss;}
+      
       break;
     
     case left_and_front:
@@ -548,7 +558,7 @@ static inline uint8_t scale_correction(int32_t raw_correction) {
   else return (uint8_t) raw_correction_mag;
 }
 
-void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1) {
+void PID_Controller_enc(_Bool reset, uint32_t L1, uint32_t R1) {
   static int32_t error_sum = 0, error_prev = 0;
   if (reset) {
     error_sum = 0;
@@ -559,7 +569,7 @@ void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1) {
 	
   int32_t error_diff = error - error_prev;
 	
-  float correction = KP*error + KI*error_sum + KD*error_diff;
+  float correction = KP_enc*error + KI_enc*error_sum + KD_enc*error_diff;
   uint8_t correction_scaled = scale_correction(correction);
 
   if (error > 0) {
@@ -580,9 +590,40 @@ void PID_Controller(_Bool reset, uint32_t L1, uint32_t R1) {
 	error_prev = error;
 }
 
+void PID_Controller_drift(_Bool reset) {
+  static int32_t error_sum = 0, error_prev = 0;
+  if (reset) {
+    error_sum = 0;
+    error_prev = 0;
+  }
+  int32_t error = (int32_t) LEFT_DIST_SETPOINT - g_LeftDist;
+  error_sum += error;
+	
+  int32_t error_diff = error - error_prev;
+	
+  float correction = KP_enc*error + KI_enc*error_sum + KD_enc*error_diff;
+  uint8_t correction_scaled = scale_correction(correction);
+
+  if (error > 0) {
+    if (g_RightDutyCycle + correction_scaled > 0xFF) {g_RightDutyCycle = 0xFF;}
+    else {g_RightDutyCycle += correction_scaled;}
+
+    if (g_LeftDutyCycle - correction_scaled < 0xA0) {g_LeftDutyCycle = 0xA0;}
+    else {g_LeftDutyCycle -= correction_scaled;}
+  } 
+  else if (error < 0) { 
+    if (g_LeftDutyCycle + correction_scaled > 0xFF) {g_LeftDutyCycle = 0xFF;}
+    else {g_LeftDutyCycle += correction_scaled;}
+
+    if (g_RightDutyCycle - correction_scaled < 0xA0) {g_RightDutyCycle = 0xA0;}
+    else {g_RightDutyCycle -= correction_scaled;}
+  }
+	error_prev = error;
+}
+
 // Functions for navigation
 void drive_straight_distance(uint32_t inches) {
-  PID_Controller(true, 0, 0);
+  PID_Controller_enc(true, 0, 0);
   read_L1_quad_enc(1);
   read_R1_quad_enc(1);  
   
@@ -602,7 +643,7 @@ void drive_straight_distance(uint32_t inches) {
 
     if (++pwmCnt == PWM_TOP) pwmCnt = 0;
 
-    PID_Controller(false, read_L1_quad_enc(0), read_R1_quad_enc(0));
+    PID_Controller_enc(false, read_L1_quad_enc(0), read_R1_quad_enc(0));
     LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
   } 
 }
@@ -615,7 +656,8 @@ void drive_straight(drive_state cmd) {
       // Reset variables and states for driving
       L1 = read_L1_quad_enc(1);
       R1 = read_R1_quad_enc(1);
-      PID_Controller(true, L1, R1); // 1 is rst, 0s to not start with imaginary error
+      PID_Controller_enc(true, L1, R1); // 1 is rst, 0s to not start with imaginary error
+      PID_Controller_drift(true);
       pwmCnt = 0;
       g_LeftDutyCycle = 0xCF;
       g_RightDutyCycle = 0xCF;
@@ -629,7 +671,7 @@ void drive_straight(drive_state cmd) {
       else {JC &= ~(1 << R_PWM_OFFSET);}
     
       if (++pwmCnt == PWM_TOP) {pwmCnt = 0;}
-      PID_Controller(0, read_L1_quad_enc(0), read_R1_quad_enc(0));
+      PID_Controller_enc(0, read_L1_quad_enc(0), read_R1_quad_enc(0));
       break;
 
     case stop_driving:
@@ -642,7 +684,7 @@ void drive_straight(drive_state cmd) {
 }
 
 void turn(uint32_t degrees) {   
-    // PID_Controller(true, 0, 0);
+    // PID_Controller_enc(true, 0, 0);
     read_L1_quad_enc(1);
     read_R1_quad_enc(1);
 
@@ -666,7 +708,7 @@ void turn(uint32_t degrees) {
 
         if (++pwmCnt == PWM_TOP) pwmCnt = 0;
 
-        // PID_Controller(false, read_L1_quad_enc(0), read_R1_quad_enc(0));
+        // PID_Controller_enc(false, read_L1_quad_enc(0), read_R1_quad_enc(0));
         LEDS = (g_LeftDutyCycle << 8) | g_RightDutyCycle;
     }
 }
