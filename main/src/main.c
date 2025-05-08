@@ -136,9 +136,9 @@ _Bool delay_1s();
 _Bool delay_5s();
 _Bool delay_half_sec();
 void timer_2us(unsigned t);
-void set_trig_pin(UltrasonicSensor uss);
-void clear_trig_pin(UltrasonicSensor uss);
-_Bool read_echo_pin(UltrasonicSensor uss);
+static inline void set_trig_pin(UltrasonicSensor uss);
+static inline void clear_trig_pin(UltrasonicSensor uss);
+static inline _Bool read_echo_pin(UltrasonicSensor uss);
 void restart_timer0();
 uint32_t get_timer0_value_us();
 uint32_t *convert_timer_to_hex_address(uint8_t timer_number);
@@ -198,29 +198,9 @@ int main() {
   JC_DDR = 0x00;
 
   ANODES = 0x00;
-  // while (1) {
-  //   g_NewReading = false; // Reset new reading flag so that it will only be high if uss fsm sets it
-  //   read_2_uss_fsm(&FrontUSS, &LeftUSS, 
-  //                 //  &g_FrontDist, &g_LeftDist,
-  //                  front_buf, left_buf);
-  //   if (g_NewReading) {
-  //     // xil_printf("Front: %5d    Left: %5d\n", g_FrontDist, g_LeftDist);
-  //   //   xil_printf("Left sensor reading: %d\n",  g_LeftDist);
-  //   //   while (!delay_half_sec());
-  //   }
-    
-  //   if (g_FrontDist < 8) {
-  //     set_motion_type(stop);
-  //   }
-  //   else if (g_LeftDist < 13) {
-  //     set_motion_type(straight);
-  //     drive_straight(driving);
-  //   }
-  // }
   _Bool btnU = false, btnD = false, btnL = false, btnR = false;
   maze_state state = wait_to_start;
   maze_state next_state;
-//   maze_state last_state = wait_to_start;
   maze_state ultrasonic_state = left_only;
   maze_state last_ultrasonic = left_only;
   motion_type turn_dir;
@@ -235,10 +215,8 @@ int main() {
     btnR = RightButton_pressed();
     g_NewReading = false; // Reset new reading flag so that it will only be high if uss fsm sets it
     read_2_uss_fsm(&FrontUSS, &LeftUSS, 
-                //    &g_FrontDist, &g_LeftDist, 
                    front_buf, left_buf);
     if (g_NewReading) {          
-      // xil_printf("Front: %5d    Left: %5d\n", g_FrontDist, g_LeftDist); // Debug Prints       
       if (g_FrontDist >= DIST_THRESHOLD && g_LeftDist < DIST_THRESHOLD) {ultrasonic_state = left_only;}
       else if (g_FrontDist < DIST_THRESHOLD && g_LeftDist < DIST_THRESHOLD) {ultrasonic_state = left_and_front;}
       else if (g_FrontDist < DIST_THRESHOLD && g_LeftDist >= DIST_THRESHOLD) {ultrasonic_state = front_only;}
@@ -268,7 +246,6 @@ int main() {
       break;
     
     case left_only:
-    //   last_state = state;
       win_check = 0;
       drive_straight(driving);
       if (g_NewReading && (ultrasonic_state != last_ultrasonic)) {next_state = update_uss;}
@@ -279,7 +256,6 @@ int main() {
       drive_straight(stop_driving);
       set_motion_type(stop);
       turn_dir = right;
-    //   last_state = state;
       next_state = turn_state;
       break;
 
@@ -288,7 +264,6 @@ int main() {
       drive_straight(stop_driving);
       set_motion_type(stop);
       turn_dir = right;
-    //   last_state = state;
       next_state = turn_state;
       break;
 
@@ -297,7 +272,6 @@ int main() {
       drive_straight(stop_driving);
       set_motion_type(stop);
       turn_dir = left;
-    //   last_state = state;
       next_state = turn_state;
       break;
     
@@ -353,15 +327,15 @@ void init_program() {
 }
 
 // Functions for the Ultrasonic Sensor
-void set_trig_pin(UltrasonicSensor uss) {
+static inline void set_trig_pin(UltrasonicSensor uss) {
   JB |= (1<<uss.trig_offset); // set trig pin
 }
 
-void clear_trig_pin(UltrasonicSensor uss) {
+static inline void clear_trig_pin(UltrasonicSensor uss) {
   JB &= ~(1<<uss.trig_offset); // clear trig pin
 }
 
-_Bool read_echo_pin(UltrasonicSensor uss) {
+static inline _Bool read_echo_pin(UltrasonicSensor uss) {
   bool echo = JB & (1<<uss.echo_offset); // Read echo signal from pin
   return echo;           // return echo pin value
 }
@@ -728,7 +702,6 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
 
   case clear_trig:
     // Wait until 10us have passed before clearing trig
-    // 10us/(1.77us/tick) gives ticks, cast converts to uint32_t, '+ 0.05f' ensures the cast rounds correcly. 
     if (read_stopwatch(5) >= 10) {
       clear_trig_pin(*uss1);
       clear_trig_pin(*uss2);
@@ -823,7 +796,7 @@ void read_2_uss_fsm(UltrasonicSensor * uss1,
 
   case calculate_distance:
     // Use echo high time to calculate distance:
-    //    hw_ticks*micros per ticks / 58 micros per cm = cm
+    //    hw_ticks(micros) / 58 micros per cm = cm
     // Dereference pointers to update both distance readings
     g_FrontDist = (uss1->med_echo_high_time) / 58;
     g_LeftDist = (uss2->med_echo_high_time) / 58;
