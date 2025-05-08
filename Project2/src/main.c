@@ -251,8 +251,13 @@ int main() {
     
     case left_only:
       win_check = 0;
+      if (g_NewReading) {
+        if (ultrasonic_state != last_ultrasonic) {next_state = update_uss;}
+        else {PID_Controller_drift(0);}
+      }
+
       drive_straight(driving);
-      if (g_NewReading && (ultrasonic_state != last_ultrasonic)) {next_state = update_uss;}
+      
       break;
     
     case left_and_front:
@@ -652,6 +657,7 @@ void drive_straight(drive_state cmd) {
       L1 = read_L1_quad_enc(1);
       R1 = read_R1_quad_enc(1);
       PID_Controller_enc(true, L1, R1); // 1 is rst, 0s to not start with imaginary error
+      PID_Controller_drift(true);
       pwmCnt = 0;
       g_LeftDutyCycle = 0xCF;
       g_RightDutyCycle = 0xCF;
