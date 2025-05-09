@@ -646,8 +646,8 @@ void turn(uint32_t degrees) {
     read_L1_quad_enc(1);
     read_R1_quad_enc(1);
 
-    g_RightDutyCycle = 0xBF;
-    g_LeftDutyCycle = 0xBF;
+    g_RightDutyCycle = 0xDF;
+    g_LeftDutyCycle = 0xDF;
     
     // Degrees to Arc Length
     // Correction for 180deg turns
