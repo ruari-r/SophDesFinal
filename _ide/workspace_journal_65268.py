@@ -1,4 +1,4 @@
-# 2025-05-09T10:41:07.076711800
+# 2025-05-09T05:22:30.693857900
 import vitis
 
 client = vitis.create_client()
@@ -8,42 +8,6 @@ platform = client.get_component(name="microblaze3")
 status = platform.build()
 
 comp = client.get_component(name="Project2")
-comp.build()
-
-status = platform.build()
-
-comp.build()
-
-status = platform.build()
-
-comp.build()
-
-status = platform.build()
-
-comp.build()
-
-status = platform.build()
-
-comp.build()
-
-status = platform.build()
-
-comp.build()
-
-status = platform.build()
-
-comp.build()
-
-status = platform.build()
-
-comp.build()
-
-status = platform.build()
-
-comp.build()
-
-status = platform.build()
-
 comp.build()
 
 status = platform.build()
